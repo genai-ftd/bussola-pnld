@@ -16,13 +16,16 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from api.confianca import LIMIAR_ALTO, LIMIAR_BAIXO
+from api import responder
+from api.guiadas import GUIADAS
 from api.search import Buscador
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIR_FRONT = os.path.join(RAIZ, "frontend")
 DIR_DIST = os.path.join(RAIZ, "dist")
 DIR_PAGES = RAIZ  # o GitHub Pages desta POC serve a raiz do main
-LIMITE_TEXTO = 620          # o bastante para BM25 e para recortar a citação
+LIMITE_TEXTO = 1000         # menos truncamento = cobertura igual à do motor local
 
 PERGUNTAS_BANCO = [
     "atividades de leitura para o 3º ano",
@@ -88,11 +91,42 @@ def montar_banco(b, mapa):
             # em 95% dos casos não é o que a busca semântica escolheu
             exportado = mapa.get(r["chunk_idx"])
             if exportado is not None:
-                pares.append([round(r["pontuacao"], 6), exportado])
+                pares.append([round(r["pontuacao"], 6), exportado,
+                              round(r["cobertura"], 4)])
         if pares:
             banco.append({"q": pergunta, "r": pares})
         print("  banco: {} -> {} resultados".format(pergunta, len(pares)))
     return banco
+
+
+def montar_guiadas(b, mapa):
+    """Resultados das perguntas sobre a coleção, pré-computados pelo motor real."""
+    saida = {}
+    for g in GUIADAS:
+        res = b.buscar(g["consulta"], principais=3, extras=3)
+        pares = []
+        for r in res["principais"] + res["tambem_encontrei"] + res["vizinhos"]:
+            exportado = mapa.get(r["chunk_idx"])
+            if exportado is not None:
+                pares.append([round(r["pontuacao"], 6), exportado,
+                              round(r["cobertura"], 4)])
+        saida[g["id"]] = {
+            "padroes": g["padroes"],
+            "texto": g["texto"],
+            "modo": g["modo"],
+            "r": pares,
+        }
+        print("  guiada: {} -> {} resultados".format(g["id"], len(pares)))
+    return saida
+
+
+def frequencia_documento(b):
+    """df por termo, medido no índice completo (não no texto truncado).
+
+    Vai embutido na página para a decisão de confiança do motor publicado ser
+    idêntica à do local — mesmo peso de IDF, mesmos limiares.
+    """
+    return {termo: int(n) for termo, n in b.bm25.df.items()}
 
 
 def main():
@@ -104,7 +138,27 @@ def main():
     print("Pré-computando o banco de perguntas com a busca semântica real…")
     banco = montar_banco(b, mapa)
 
-    dados = {"obras": obras, "trechos": trechos, "banco": banco}
+    print("Pré-computando as respostas guiadas…")
+    guiadas = montar_guiadas(b, mapa)
+
+    dados = {
+        "obras": obras,
+        "trechos": trechos,
+        "banco": banco,
+        "guiadas": guiadas,
+        "df": frequencia_documento(b),
+        "n": len(b.chunks),
+        "limiares": {"alto": LIMIAR_ALTO, "baixo": LIMIAR_BAIXO},
+        # a copy mora em api/responder.py e vem embutida daqui: uma fonte só,
+        # para as duas camadas nunca divergirem de texto
+        "copy": {
+            "aberturas": responder.ABERTURAS,
+            "parciais": responder.ABERTURAS_PARCIAIS,
+            "sem_termo": responder.SEM_RESULTADO_COM_TERMO,
+            "sem_generico": responder.SEM_RESULTADO_GENERICO,
+            "rotulo_vizinhos": responder.ROTULO_VIZINHOS,
+        },
+    }
     blob = json.dumps(dados, ensure_ascii=False, separators=(",", ":"))
 
     html = open(os.path.join(DIR_FRONT, "index.html"), encoding="utf-8").read()

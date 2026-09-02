@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from api.guiadas import detectar as detectar_guiada
 from api.responder import montar_resposta
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -108,13 +109,21 @@ async def busca(p: Pergunta):
                 "erro": _erro_carga, "ms": 0}
     # `async def` + fila própria: o event loop segue livre para aceitar novas
     # conexões enquanto a busca ocupa o trabalhador dedicado.
+    # Perguntas sobre a coleção inteira ganham panorama curado, e a busca roda
+    # com uma consulta interna melhor formulada para as páginas citadas baterem.
+    guiada = detectar_guiada(p.pergunta)
+    consulta = guiada["consulta"] if guiada else p.pergunta
     resultado = await asyncio.get_event_loop().run_in_executor(
-        _FILA_BUSCA, _buscar_em_cache, p.pergunta, p.limite)
-    resposta = montar_resposta(resultado, p.nome)
+        _FILA_BUSCA, _buscar_em_cache, consulta, p.limite)
+    # o cache guarda o resultado da consulta interna; a resposta fala da pergunta
+    # que o professor escreveu
+    resultado = dict(resultado, pergunta=p.pergunta)
+    resposta = montar_resposta(resultado, p.nome, guiada=guiada)
     return {
         **resposta,
         "filtros": resultado["filtros"],
         "confiante": resultado["confiante"],
+        "cobertura": resultado.get("cobertura"),
         "ms": int((time.time() - inicio) * 1000),
     }
 

@@ -178,8 +178,10 @@
   var SUGESTOES = [
     "atividades de leitura para o 3º ano",
     "como trabalhar cantigas populares",
-    "avaliação diagnóstica em espanhol",
-    "proposta de arte com Tarsila do Amaral"
+    "Essa coleção trabalha as habilidades de leitura previstas pra esse ano?",
+    "Quais recursos de acessibilidade ela oferece?",
+    "Que material de apoio vem incluído pro professor?",
+    "Como a coleção trata turmas multisseriadas?"
   ];
 
   var el = {
@@ -272,12 +274,13 @@
     el.conversa.appendChild(c);
   }
 
-  function tambemEncontrei(lista){
+  function tambemEncontrei(lista, rotulo){
     if(!lista || !lista.length) return;
     var d = document.createElement("details");
     d.className = "tambem";
+    if(rotulo) d.open = true;   // quando é assunto vizinho, mostrar aberto
     var s = document.createElement("summary");
-    s.textContent = "Também encontrei (" + lista.length + ")";
+    s.textContent = rotulo || ("Também encontrei (" + lista.length + ")");
     d.appendChild(s);
     var ul = document.createElement("ul");
     lista.forEach(function(r){
@@ -336,7 +339,7 @@
       carregando.remove();
       balao("bot", d.texto);
       (d.resultados || []).forEach(cartao);
-      tambemEncontrei(d.tambem_encontrei);
+      tambemEncontrei(d.tambem_encontrei, d.rotulo);
       rolar();
     }).catch(function(e){
       carregando.remove();

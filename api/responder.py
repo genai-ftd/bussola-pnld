@@ -1,28 +1,89 @@
 """Montagem determinística da resposta conversacional.
 
-Sem LLM e sem geração livre: a frase sai de um template escolhido por regras,
-preenchido com os metadados recuperados pela busca. O objetivo da POC é validar
-encontrabilidade e navegação, não redação automática.
+Sem LLM e sem geração livre: a frase sai de uma lista de variantes escolhida por
+regra, preenchida com os metadados recuperados. As variantes existem para o chat
+não soar repetitivo em uso real — e a escolha é semeada pela própria pergunta,
+então a mesma pergunta sempre devolve a mesma frase (dá para reproduzir um teste).
+
+Três estados, conforme api/confianca.py:
+  alta     — responde direto
+  parcial  — responde com ressalva explícita
+  nenhuma  — diz que não encontrou, e diz o que faltou
 """
 import random
+import re
+import unicodedata
+
+# ------------------------------------------------------------------ variantes
 
 ABERTURAS = [
-    "{nome}, encontrei {n} {trecho_palavra} que {verbo} com a sua busca:",
-    "Achei {n} {trecho_palavra} sobre isso, {nome}:",
+    "{nome}, encontrei {n} {palavra} que {verbo} com a sua busca:",
+    "Achei {n} {palavra} sobre isso, {nome}:",
     "{nome}, isto é o que o acervo do PNLD 2027 traz sobre o tema:",
+    "Encontrei o seguinte nas obras indexadas, {nome}:",
 ]
 
-SEM_RESULTADO = (
-    "{nome}, não encontrei nada suficientemente próximo dessa pergunta nas obras "
-    "que já estão indexadas. Tente descrever o conteúdo com outras palavras "
-    "(por exemplo, o tema da aula, o gênero textual ou a habilidade da BNCC), "
-    "ou informe o ano e o componente curricular."
-)
+ABERTURAS_PARCIAIS = [
+    "{nome}, não tenho certeza de que é isto que você procura — foi o mais "
+    "próximo que encontrei:",
+    "Achei algo relacionado, mas pode não ser exatamente o que você pediu, {nome}:",
+    "{nome}, isto tangencia a sua pergunta. Se não for o que você queria, tenta "
+    "reformular pelo tema da aula:",
+    "Encontrei correspondência fraca para essa pergunta, {nome}. Vale conferir "
+    "antes de usar:",
+]
+
+# Quando dá para nomear o que faltou, a mensagem fica muito mais útil: o
+# professor entende na hora que o assunto não está no acervo, e não que a
+# ferramenta falhou.
+SEM_RESULTADO_COM_TERMO = [
+    "Não achei nada sobre {termo} nas obras que estão indexadas, {nome}. Quer "
+    "tentar por outro caminho — o tema da aula, o gênero textual ou a habilidade "
+    "da BNCC?",
+    "{nome}, {termo} não aparece em nenhuma página do que eu tenho indexado. Se "
+    "for outro nome para a mesma coisa, me diz que eu procuro de novo.",
+    "Procurei {termo} e não encontrei. O acervo indexado ainda é uma amostra: "
+    "Língua Portuguesa, Língua Espanhola e Arte dos Anos Iniciais.",
+    "{termo} não está nas obras que eu tenho aqui, {nome}. Pode ser que esteja "
+    "num volume que ainda não entrou no índice.",
+]
+
+SEM_RESULTADO_GENERICO = [
+    "Não encontrei nada suficientemente próximo disso, {nome}. Tenta descrever "
+    "pelo conteúdo da aula — por exemplo, \"atividades de leitura para o 3º ano\".",
+    "Essa eu não sei responder com o que está indexado, {nome}. Dizer o ano e o "
+    "componente curricular costuma ajudar.",
+    "Não achei correspondência boa o bastante para te mostrar. Prefiro dizer isso "
+    "a te mandar para uma página errada.",
+    "{nome}, essa passou longe do que eu tenho indexado. Quer tentar com outras "
+    "palavras?",
+]
 
 ACERVO_VAZIO = (
     "{nome}, ainda não há obras indexadas nesta instalação. "
     "Rode a ingestão (`python ingest/build_index.py`) para começar."
 )
+
+ROTULO_VIZINHOS = "O que existe de mais próximo — assunto vizinho, não resposta:"
+
+# ------------------------------------------------------------------ auxiliares
+
+
+def _sem_acento(s):
+    return "".join(c for c in unicodedata.normalize("NFD", s)
+                   if unicodedata.category(c) != "Mn")
+
+
+def termo_original(pergunta, token):
+    """Recupera a palavra como o professor escreveu, a partir do token normalizado.
+
+    O índice trabalha em minúsculas e sem acento; devolver "pascoa" na mensagem
+    ficaria estranho quando a pessoa escreveu "Páscoa".
+    """
+    for palavra in re.findall(r"\w+", pergunta, re.UNICODE):
+        if _sem_acento(palavra).lower() == token:
+            return palavra
+    return token
 
 
 def _descrever_obra(r):
@@ -33,22 +94,15 @@ def _descrever_obra(r):
 
 
 def _descrever_pagina(r):
-    if not r.get("offset_confiavel", True):
-        # a paginação do leitor não foi confirmada para esta obra
-        return "página {} do livro".format(
-            r.get("pagina_impressa") or r["pagina_fisica"])
+    if not r.get("offset_confiavel"):
+        if r.get("pagina_impressa"):
+            return "página {} (página {} do PDF)".format(
+                r["pagina_impressa"], r["pagina_fisica"])
+        return "página {} do PDF".format(r["pagina_fisica"])
     if r.get("pagina_impressa"):
         return "página {} (página {} do visualizador)".format(
             r["pagina_impressa"], r["pagina_issuu"])
     return "página {} do visualizador".format(r["pagina_issuu"])
-
-
-def _cartao(r):
-    """Acrescenta os campos de apresentação que o front-end espera."""
-    c = dict(r)
-    c["descricao_obra"] = _descrever_obra(r)
-    c["descricao_pagina"] = _descrever_pagina(r)
-    return c
 
 
 def _descrever_filtros(filtros):
@@ -61,37 +115,82 @@ def _descrever_filtros(filtros):
         ditos.append("coleção {}".format(filtros["colecao"]))
     if not ditos:
         return ""
-    return "Priorizei o que é de {}.".format(" · ".join(ditos))
+    return " Priorizei o que é de {}.".format(" · ".join(ditos))
 
 
-def montar_resposta(resultado, nome=None, acervo_vazio=False, semente=None):
+def _cartao(r):
+    c = dict(r)
+    c["descricao_obra"] = _descrever_obra(r)
+    c["descricao_pagina"] = _descrever_pagina(r)
+    return c
+
+
+def _escolher(variantes, semente):
+    return random.Random(semente).choice(variantes)
+
+
+# -------------------------------------------------------------------- montagem
+
+
+def montar_resposta(resultado, nome=None, acervo_vazio=False, guiada=None):
     nome = (nome or "").strip() or "Professor(a)"
     if acervo_vazio:
-        return {"texto": ACERVO_VAZIO.format(nome=nome), "resultados": [], "tambem_encontrei": []}
+        return {"texto": ACERVO_VAZIO.format(nome=nome), "resultados": [],
+                "tambem_encontrei": [], "rotulo": None, "confianca": "nenhuma"}
 
+    pergunta = resultado.get("pergunta", "")
     principais = resultado.get("principais", [])
-    if not principais or not resultado.get("confiante"):
+    vizinhos = resultado.get("vizinhos", [])
+
+    # 1. pergunta sobre a coleção: panorama curado + páginas onde aquilo aparece
+    if guiada:
+        mostra = principais if guiada["modo"] == "responde" else []
+        apoio = vizinhos or resultado.get("tambem_encontrei", [])
+        if guiada["modo"] == "sem_conteudo":
+            apoio = (principais + vizinhos)[:3]
         return {
-            "texto": SEM_RESULTADO.format(nome=nome),
-            "resultados": [],
-            # pistas fracas, mas passam pelo mesmo formatador: sem isso o
-            # front-end recebe itens sem `descricao_pagina` e imprime "undefined"
-            "tambem_encontrei": [_cartao(r) for r in principais[:3]],
+            "texto": guiada["texto"],
+            "resultados": [_cartao(r) for r in mostra],
+            "tambem_encontrei": [] if guiada["modo"] == "responde"
+                                else [_cartao(r) for r in apoio],
+            "rotulo": None if guiada["modo"] == "responde" else ROTULO_VIZINHOS,
+            "confianca": "guiada",
         }
 
-    rnd = random.Random(semente if semente is not None else resultado.get("pergunta", ""))
+    confianca = resultado.get("confianca", "nenhuma")
+
+    # 2. nada ancorado no acervo: dizer que não sabe, e dizer o que faltou
+    if confianca == "nenhuma" or not principais:
+        ausentes = resultado.get("termos_ausentes") or []
+        if ausentes:
+            token = max(ausentes, key=len)
+            texto = _escolher(SEM_RESULTADO_COM_TERMO, pergunta).format(
+                nome=nome, termo=termo_original(pergunta, token))
+        else:
+            texto = _escolher(SEM_RESULTADO_GENERICO, pergunta).format(nome=nome)
+        return {
+            "texto": texto,
+            "resultados": [],
+            "tambem_encontrei": [_cartao(r) for r in vizinhos[:3]],
+            "rotulo": ROTULO_VIZINHOS if vizinhos else None,
+            "confianca": "nenhuma",
+        }
+
+    # 3. resposta, com ou sem ressalva
     n = len(principais)
-    abertura = rnd.choice(ABERTURAS).format(
-        nome=nome,
-        n=n,
-        trecho_palavra="trecho" if n == 1 else "trechos",
-        verbo="conversa" if n == 1 else "conversam",
-    )
-    complemento = _descrever_filtros(resultado.get("filtros", {}))
-    texto = abertura if not complemento else abertura + " " + complemento
+    if confianca == "parcial":
+        texto = _escolher(ABERTURAS_PARCIAIS, pergunta).format(nome=nome)
+    else:
+        texto = _escolher(ABERTURAS, pergunta).format(
+            nome=nome, n=n,
+            palavra="trecho" if n == 1 else "trechos",
+            verbo="conversa" if n == 1 else "conversam",
+        ) + _descrever_filtros(resultado.get("filtros", {}))
 
     return {
         "texto": texto,
         "resultados": [_cartao(r) for r in principais],
         "tambem_encontrei": [_cartao(r) for r in resultado.get("tambem_encontrei", [])],
+        "rotulo": None,
+        "confianca": confianca,
     }

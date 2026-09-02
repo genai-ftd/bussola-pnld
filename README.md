@@ -148,6 +148,79 @@ Publicado em <https://genai-ftd.github.io/bussola-pnld/>.
 
 ---
 
+## Quando a Bússola diz que não sabe
+
+A primeira versão errava com confiança: perguntada sobre Páscoa — que não aparece
+em nenhuma das 1.044 páginas — devolvia semáforo, vocabulário e ficha de avaliação
+como se fossem resposta.
+
+A causa não era o limiar estar no lugar errado, era o **método**. Medimos: a
+similaridade de cosseno não separa. Perguntas fora do acervo pontuam 0,45–0,61
+contra prosa pedagógica em português, acima de vários acertos legítimos. Qualquer
+corte sobre o cosseno erra dos dois lados.
+
+O sinal que separa é lexical: **o trecho contém os termos que carregam o assunto
+da pergunta?** Pesamos cada termo pelo IDF no acervo e exigimos que o trecho cubra
+uma fração mínima dessa massa (`api/confianca.py`). Termos genéricos valem pouco;
+termos raros ou ausentes valem muito e derrubam a confiança sozinhos.
+
+Três faixas, em vez de um corte único:
+
+| cobertura | comportamento |
+|---|---|
+| ≥ 0,38 | responde direto |
+| 0,28 – 0,38 | responde **com ressalva explícita** |
+| < 0,28 | diz que não encontrou, e diz qual termo faltou |
+
+### Taxa de erro medida
+
+`.venv/bin/python scripts/avaliar_confianca.py` roda 44 perguntas rotuladas
+(25 dentro do acervo, 19 fora) e varre o limiar:
+
+| | responde direto | com ressalva | recusa |
+|---|---|---|---|
+| **25 dentro do acervo** | 23 | 2 | **0** |
+| **19 fora do acervo** | **0** | 7 | 12 |
+
+Zero resposta errada sem aviso; zero pergunta boa perdida. Para mover o ponto de
+operação, mude `LIMIAR_ALTO` / `LIMIAR_BAIXO` em `api/confianca.py` e rode o
+harness de novo — a varredura mostra o custo de cada escolha.
+
+O conjunto rotulado é pequeno e feito à mão: serve para calibrar e para pegar
+regressão, não como medida de produção. Amplie antes de decidir se o formato
+determinístico se sustenta.
+
+### Limite conhecido
+
+A ancoragem é lexical, então ela não distingue sentido: "sistema solar" casa com
+"filtro solar" e passa. Desambiguar exigiria outra camada.
+
+## Perguntas sobre a coleção
+
+Quatro perguntas não são busca por trecho — o professor quer panorama, e um cartão
+solto não responde. `api/guiadas.py` detecta por palavra-chave e devolve um texto
+curado mais as páginas onde aquilo aparece:
+
+- habilidades de leitura previstas / BNCC
+- turmas multisseriadas
+- recursos de acessibilidade
+- material de apoio ao professor
+
+Toda afirmação nesses textos foi conferida contra o texto extraído. **Multisseriadas
+não existe no acervo** — o termo não aparece em nenhuma página — e a resposta diz
+isso, mostrando o assunto vizinho sob o rótulo "não é resposta" em vez de empurrar
+a página mais parecida.
+
+## Mensagens do chat
+
+`api/responder.py` guarda listas de variantes: aberturas confiantes, aberturas com
+ressalva, quatro mensagens de "não encontrei" que nomeiam o termo ausente e quatro
+genéricas. A escolha é semeada pela própria pergunta — varia entre perguntas, mas a
+mesma pergunta sempre devolve a mesma frase, o que mantém os testes reproduzíveis.
+A copy vale para as duas camadas: o build embute essas listas na página publicada.
+
+---
+
 ## Limitações conhecidas
 
 **1. A API do Issuu não entrega o conteúdo das páginas.**

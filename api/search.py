@@ -15,6 +15,8 @@ import re
 
 import numpy as np
 
+from api import confianca
+from api.confianca import cobertura, faixa, termos_ausentes
 from ingest.metadata import norm, parse_pergunta
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -23,7 +25,6 @@ CATALOGO = os.path.join(RAIZ, "data", "catalog.json")
 
 K_RRF = 60          # constante padrão do Reciprocal Rank Fusion
 POOL = 120          # quantos candidatos cada estratégia contribui
-LIMIAR_RELEVANCIA = 0.42   # abaixo disso, tratamos como "não encontrei"
 PESO_DENSO = 0.06   # desempate: deixa uma similaridade muito maior superar o ranking
 REPETICOES_BOILERPLATE = 3  # texto que se repete N vezes na obra é paratexto
 
@@ -36,7 +37,13 @@ me te lhe lhes isso isto aquilo esse essa este esta aquele aquela
 mais menos muito pouco tambem também ja já nao não sim so só bem
 quero queria gostaria preciso pode posso poderia tem qual me da
 livro livros pagina paginas página páginas material conteudo conteúdo
+trabalhar abordar ensinar usar utilizar fazer encontrar mostrar buscar procurar
+exemplo exemplos forma formas maneira maneiras jeito tema assunto aula aulas
+colecao coleção obra obras trabalho aborda ensina
 """.split())
+# As últimas linhas são moldura pedagógica, não assunto: em "como trabalhar
+# cantigas populares", quem carrega o tema é "cantigas". Deixar "trabalhar"
+# valendo IDF fazia a ancoragem punir perguntas boas.
 
 
 def tokenizar(texto: str):
@@ -84,12 +91,13 @@ class IndiceBM25:
         # no documento e norma do documento são todos conhecidos na indexação.
         # Guardando-a pronta, a consulta vira concatenar arrays e somar — sem
         # nenhuma aritmética por documento em tempo de busca.
-        self.docs, self.contribuicoes = {}, {}
+        self.docs, self.contribuicoes, self.df = {}, {}, {}
         for termo, lista in cru.items():
             idf = math.log(1 + (self.n - len(lista) + 0.5) / (len(lista) + 0.5))
             docs = np.fromiter((d for d, _ in lista), dtype="int32", count=len(lista))
             freqs = np.fromiter((f for _, f in lista), dtype="float32", count=len(lista))
             self.docs[termo] = docs
+            self.df[termo] = len(lista)
             self.contribuicoes[termo] = (
                 idf * freqs * (self.K1 + 1) / (freqs + self.K1 * norma[docs])
             ).astype("float32")
@@ -205,14 +213,35 @@ class Buscador:
         selecionados = self._diversificar(classificados, similaridades, pergunta,
                                           principais, extras)
 
-        melhor = max((r["similaridade"] for r in selecionados), default=0.0)
+        # Ancoragem lexical: só respondemos com trechos que realmente contêm os
+        # termos que carregam o assunto da pergunta. Ver api/confianca.py.
+        # lidos do módulo (não importados por valor) para o harness varrer o limiar
+        alto, baixo = confianca.LIMIAR_ALTO, confianca.LIMIAR_BAIXO
+        melhor = max([r["cobertura"] for r in selecionados], default=0.0)
+        confianca_faixa = ("alta" if melhor >= alto
+                           else "parcial" if melhor >= baixo else "nenhuma")
+        ancorados = [r for r in selecionados if r["cobertura"] >= baixo]
         return {
             "pergunta": pergunta,
             "filtros": filtros,
-            "confiante": melhor >= LIMIAR_RELEVANCIA,
-            "principais": selecionados[:principais],
-            "tambem_encontrei": selecionados[principais:principais + extras],
+            "confianca": confianca_faixa,
+            "cobertura": round(melhor, 4),
+            "confiante": confianca_faixa != "nenhuma",
+            "principais": ancorados[:principais] if ancorados else [],
+            "tambem_encontrei": ancorados[principais:principais + extras],
+            # o que existe de mais próximo quando nada passa na ancoragem: serve
+            # para mostrar assunto vizinho SEM apresentá-lo como resposta
+            "vizinhos": [] if ancorados else selecionados[:3],
+            "termos_ausentes": termos_ausentes(tokens, self.bm25.df),
         }
+
+    @staticmethod
+    def _parecidos(a, b, limiar=0.6):
+        """Jaccard entre os tokens de dois trechos."""
+        if not a or not b:
+            return False
+        intersecao = len(a & b)
+        return intersecao / float(len(a) + len(b) - intersecao) >= limiar
 
     def _diversificar(self, classificados, similaridades, pergunta, principais, extras):
         """Seleciona os resultados privilegiando variedade de obras.
@@ -222,7 +251,7 @@ class Buscador:
         pedagógica, e sem esse limite eles ocupariam a resposta inteira. O
         excedente da mesma obra desce para "Também encontrei".
         """
-        vistos_pagina = set()
+        vistos_pagina, vistos_texto = set(), []
         melhores_por_obra, restantes = [], []
         obras_usadas = set()
 
@@ -231,7 +260,15 @@ class Buscador:
             chave = (chunk["obra_id"], chunk["pagina_fisica"])
             if chave in vistos_pagina:
                 continue
+            # Os manuais do professor se repetem quase iguais entre volumes da
+            # mesma coleção, e as janelas com sobreposição de uma página longa
+            # também se parecem. Comparar o conjunto de tokens pega os dois
+            # casos; comparar prefixo de texto não pegava nenhum dos dois.
+            tokens_chunk = frozenset(tokenizar(chunk["texto"]))
+            if any(self._parecidos(tokens_chunk, visto) for visto in vistos_texto):
+                continue
             vistos_pagina.add(chave)
+            vistos_texto.append(tokens_chunk)
             if chunk["obra_id"] not in obras_usadas:
                 obras_usadas.add(chunk["obra_id"])
                 melhores_por_obra.append((pontuacao, idx))
@@ -291,6 +328,8 @@ class Buscador:
             "link": link,
             "similaridade": round(float(similaridade), 4),
             "pontuacao": round(float(pontuacao), 6),
+            "cobertura": round(cobertura(tokenizar(pergunta), tokenizar(chunk["texto"]),
+                                         self.bm25.df, self.bm25.n), 4),
         }
 
 
