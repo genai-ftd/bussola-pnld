@@ -62,8 +62,10 @@ def exportar_dados(b):
     obras = []
     for oid in obras_ids:
         o = b.catalogo[oid]
-        obras.append([o["titulo"], o["colecao"], o["disciplina"], o["ano"],
-                      o["issuu"]["public_location"]])
+        # sem offset confirmado não publicamos link, igual ao motor local
+        destino = (o["issuu"]["public_location"]
+                   if o["issuu"].get("offset_pagina") is not None else "")
+        obras.append([o["titulo"], o["colecao"], o["disciplina"], o["ano"], destino])
 
     trechos, mapa = [], {}
     for i, c in enumerate(b.chunks):
@@ -81,12 +83,12 @@ def montar_banco(b, mapa):
         res = b.buscar(pergunta, principais=3, extras=3)
         pares = []
         for r in res["principais"] + res["tambem_encontrei"]:
-            # reencontra o índice do trecho pelo par (obra, página)
-            for i, c in enumerate(b.chunks):
-                if c["obra_id"] == r["obra_id"] and c["pagina_fisica"] == r["pagina_fisica"] \
-                        and i in mapa:
-                    pares.append([round(r["pontuacao"], 6), mapa[i]])
-                    break
+            # o resultado carrega o índice exato do trecho que casou; procurar
+            # pelo par (obra, página) pegaria o primeiro trecho da página, que
+            # em 95% dos casos não é o que a busca semântica escolheu
+            exportado = mapa.get(r["chunk_idx"])
+            if exportado is not None:
+                pares.append([round(r["pontuacao"], 6), exportado])
         if pares:
             banco.append({"q": pergunta, "r": pares})
         print("  banco: {} -> {} resultados".format(pergunta, len(pares)))

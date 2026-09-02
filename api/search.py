@@ -9,11 +9,11 @@
   sem LLM, e entram como reforço multiplicativo — nunca zeram o resultado.
 """
 import json
+import math
 import os
 import re
 
 import numpy as np
-from rank_bm25 import BM25Okapi
 
 from ingest.metadata import norm, parse_pergunta
 
@@ -48,6 +48,68 @@ def _rrf(ordem):
     return {idx: 1.0 / (K_RRF + posicao) for posicao, idx in enumerate(ordem)}
 
 
+class IndiceBM25:
+    """BM25 Okapi sobre um índice invertido.
+
+    Substitui a varredura do `rank_bm25`, que percorria a lista inteira de
+    documentos para cada termo da consulta. Aqui só os documentos que contêm
+    algum termo da pergunta são tocados, então o custo passa a ser proporcional
+    ao tamanho das postings, não ao tamanho do acervo — é o que permite crescer
+    de 5 para 56 obras sem que a busca fique linear no corpus.
+
+    Usa a variante de idf do Lucene, sempre positiva, o que dispensa o piso de
+    epsilon que o rank_bm25 precisa aplicar para termos muito frequentes.
+    A mesma fórmula está em frontend/motor-estatico.js, para as duas camadas
+    ordenarem igual.
+    """
+
+    K1 = 1.5
+    B = 0.75
+
+    def __init__(self, documentos):
+        self.n = len(documentos)
+        tamanhos = np.array([len(t) for t in documentos], dtype="float32")
+        media = float(tamanhos.mean()) if self.n else 1.0
+        norma = 1 - self.B + self.B * (tamanhos / (media or 1.0))
+
+        cru = {}
+        for i, tokens in enumerate(documentos):
+            frequencias = {}
+            for t in tokens:
+                frequencias[t] = frequencias.get(t, 0) + 1
+            for termo, f in frequencias.items():
+                cru.setdefault(termo, []).append((i, f))
+
+        # A contribuição de cada posting é constante: idf do termo, frequência
+        # no documento e norma do documento são todos conhecidos na indexação.
+        # Guardando-a pronta, a consulta vira concatenar arrays e somar — sem
+        # nenhuma aritmética por documento em tempo de busca.
+        self.docs, self.contribuicoes = {}, {}
+        for termo, lista in cru.items():
+            idf = math.log(1 + (self.n - len(lista) + 0.5) / (len(lista) + 0.5))
+            docs = np.fromiter((d for d, _ in lista), dtype="int32", count=len(lista))
+            freqs = np.fromiter((f for _, f in lista), dtype="float32", count=len(lista))
+            self.docs[termo] = docs
+            self.contribuicoes[termo] = (
+                idf * freqs * (self.K1 + 1) / (freqs + self.K1 * norma[docs])
+            ).astype("float32")
+
+    def top(self, tokens, k):
+        """Índices dos k documentos mais pontuados, em ordem decrescente."""
+        docs = [self.docs[t] for t in tokens if t in self.docs]
+        if not docs:
+            return []
+        contribuicoes = [self.contribuicoes[t] for t in tokens if t in self.contribuicoes]
+        pontos = np.bincount(np.concatenate(docs),
+                             weights=np.concatenate(contribuicoes),
+                             minlength=self.n)
+        candidatos = np.flatnonzero(pontos)
+        if candidatos.size > k:
+            recorte = np.argpartition(-pontos[candidatos], k)[:k]
+            candidatos = candidatos[recorte]
+        return [int(i) for i in candidatos[np.argsort(-pontos[candidatos])]]
+
+
 class Buscador:
     def __init__(self, modelo_nome=None):
         self.catalogo = {o["id"]: o for o in self._ler_json(CATALOGO)}
@@ -59,8 +121,9 @@ class Buscador:
 
         from sentence_transformers import SentenceTransformer
         self.modelo = SentenceTransformer(modelo_nome or self.manifest["modelo"])
-        self.bm25 = BM25Okapi([tokenizar(c["texto"]) for c in self.chunks])
+        self.bm25 = IndiceBM25([tokenizar(c["texto"]) for c in self.chunks])
         self.repeticoes = self._contar_repeticoes()
+        self.obras_indexadas = len({c["obra_id"] for c in self.chunks}) or 1
 
     # ------------------------------------------------------------------ carga
     @staticmethod
@@ -114,14 +177,16 @@ class Buscador:
         vetor = self.modelo.encode([pergunta], convert_to_numpy=True,
                                    normalize_embeddings=True).astype("float32")[0]
         similaridades = self.embeddings @ vetor
-        top_denso = np.argsort(-similaridades)[:POOL]
+        # argpartition acha os POOL maiores sem ordenar o vetor inteiro: o custo
+        # deixa de ser N log N e passa a ser N + POOL log POOL
+        if similaridades.size > POOL:
+            recorte = np.argpartition(-similaridades, POOL)[:POOL]
+            top_denso = recorte[np.argsort(-similaridades[recorte])]
+        else:
+            top_denso = np.argsort(-similaridades)
 
         tokens = tokenizar(pergunta)
-        if tokens:
-            pontos_bm25 = np.asarray(self.bm25.get_scores(tokens))
-            top_lexico = [i for i in np.argsort(-pontos_bm25)[:POOL] if pontos_bm25[i] > 0]
-        else:
-            pontos_bm25, top_lexico = np.zeros(len(self.chunks)), []
+        top_lexico = self.bm25.top(tokens, POOL) if tokens else []
 
         fundido = _rrf(list(top_denso))
         for idx, valor in _rrf(list(top_lexico)).items():
@@ -176,16 +241,20 @@ class Buscador:
                 restantes.append((pontuacao, idx))
 
         escolhidos = melhores_por_obra[:principais]
-        # completa com o que sobrou, sem repetir a mesma obra mais de duas vezes
+        # O teto por obra acompanha o tamanho do acervo: com poucas obras
+        # indexadas um limite fixo de 2 devolveria menos resultados do que o
+        # pedido (com uma obra só, apenas 2 cartões para um limite de 8).
+        vagas = principais + extras
+        teto_por_obra = max(2, int(math.ceil(vagas / float(self.obras_indexadas))))
         contagem = {}
         for p, i in escolhidos:
             oid = self.chunks[i]["obra_id"]
             contagem[oid] = contagem.get(oid, 0) + 1
         for p, i in sorted(melhores_por_obra[principais:] + restantes, reverse=True):
-            if len(escolhidos) >= principais + extras:
+            if len(escolhidos) >= vagas:
                 break
             oid = self.chunks[i]["obra_id"]
-            if contagem.get(oid, 0) >= 2:
+            if contagem.get(oid, 0) >= teto_por_obra:
                 continue
             contagem[oid] = contagem.get(oid, 0) + 1
             escolhidos.append((p, i))
@@ -199,8 +268,16 @@ class Buscador:
         obra = self.catalogo.get(chunk["obra_id"], {})
         issuu = obra.get("issuu", {})
         offset = issuu.get("offset_pagina")
+        offset_confiavel = offset is not None
         pagina_issuu = chunk["pagina_fisica"] + (offset or 0)
+        # Sem offset confirmado não dá para afirmar que a página do leitor é
+        # esta: `build_catalog` deixa `offset_pagina` nulo quando o PDF local e
+        # a publicação divergem em número de páginas. Melhor não oferecer link
+        # nenhum do que mandar o professor para a página errada.
+        link = (link_pagina(issuu.get("public_location", ""), pagina_issuu)
+                if offset_confiavel else "")
         return {
+            "chunk_idx": int(idx),
             "obra_id": chunk["obra_id"],
             "titulo": obra.get("titulo", chunk["obra_id"]),
             "colecao": obra.get("colecao"),
@@ -209,9 +286,9 @@ class Buscador:
             "pagina_fisica": chunk["pagina_fisica"],
             "pagina_impressa": chunk.get("pagina_impressa") or None,
             "pagina_issuu": pagina_issuu,
-            "offset_confiavel": offset is not None,
+            "offset_confiavel": offset_confiavel,
             "trecho": recortar(chunk["texto"], pergunta),
-            "link": link_pagina(issuu.get("public_location", ""), pagina_issuu),
+            "link": link,
             "similaridade": round(float(similaridade), 4),
             "pontuacao": round(float(pontuacao), 6),
         }

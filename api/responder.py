@@ -33,10 +33,22 @@ def _descrever_obra(r):
 
 
 def _descrever_pagina(r):
+    if not r.get("offset_confiavel", True):
+        # a paginação do leitor não foi confirmada para esta obra
+        return "página {} do livro".format(
+            r.get("pagina_impressa") or r["pagina_fisica"])
     if r.get("pagina_impressa"):
         return "página {} (página {} do visualizador)".format(
             r["pagina_impressa"], r["pagina_issuu"])
     return "página {} do visualizador".format(r["pagina_issuu"])
+
+
+def _cartao(r):
+    """Acrescenta os campos de apresentação que o front-end espera."""
+    c = dict(r)
+    c["descricao_obra"] = _descrever_obra(r)
+    c["descricao_pagina"] = _descrever_pagina(r)
+    return c
 
 
 def _descrever_filtros(filtros):
@@ -62,7 +74,9 @@ def montar_resposta(resultado, nome=None, acervo_vazio=False, semente=None):
         return {
             "texto": SEM_RESULTADO.format(nome=nome),
             "resultados": [],
-            "tambem_encontrei": principais[:3],  # ainda mostramos, como pistas fracas
+            # pistas fracas, mas passam pelo mesmo formatador: sem isso o
+            # front-end recebe itens sem `descricao_pagina` e imprime "undefined"
+            "tambem_encontrei": [_cartao(r) for r in principais[:3]],
         }
 
     rnd = random.Random(semente if semente is not None else resultado.get("pergunta", ""))
@@ -76,14 +90,8 @@ def montar_resposta(resultado, nome=None, acervo_vazio=False, semente=None):
     complemento = _descrever_filtros(resultado.get("filtros", {}))
     texto = abertura if not complemento else abertura + " " + complemento
 
-    def cartao(r):
-        c = dict(r)
-        c["descricao_obra"] = _descrever_obra(r)
-        c["descricao_pagina"] = _descrever_pagina(r)
-        return c
-
     return {
         "texto": texto,
-        "resultados": [cartao(r) for r in principais],
-        "tambem_encontrei": [cartao(r) for r in resultado.get("tambem_encontrei", [])],
+        "resultados": [_cartao(r) for r in principais],
+        "tambem_encontrei": [_cartao(r) for r in resultado.get("tambem_encontrei", [])],
     }

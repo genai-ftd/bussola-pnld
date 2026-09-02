@@ -3,9 +3,12 @@
 Sobe com:  ./scripts/run_dev.sh   (ou: uvicorn api.main:app --reload)
 O front-end estático é servido na raiz: http://127.0.0.1:8000/
 """
+import asyncio
+import functools
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -32,6 +35,20 @@ app.add_middleware(
 
 _buscador = None
 _erro_carga = None
+
+# A busca é CPU-bound (Torch + NumPy) e há uma única instância do modelo. Se as
+# requisições caíssem no threadpool padrão do FastAPI, dezenas delas entrariam
+# no modelo ao mesmo tempo, disputando o GIL e as threads do Torch — a latência
+# cresceria proporcional à concorrência. Uma fila de um trabalhador serializa o
+# acesso: quem chega espera, mas cada busca roda na velocidade máxima.
+_FILA_BUSCA = ThreadPoolExecutor(max_workers=1, thread_name_prefix="busca")
+CACHE_BUSCAS = 512
+
+
+@functools.lru_cache(maxsize=CACHE_BUSCAS)
+def _buscar_em_cache(pergunta: str, limite: int):
+    """Perguntas repetidas (as sugestões do chat, sobretudo) não recalculam."""
+    return _buscador.buscar(pergunta, principais=limite, extras=3)
 
 
 def obter_buscador():
@@ -83,13 +100,16 @@ def catalogo():
 
 
 @app.post("/api/busca")
-def busca(p: Pergunta):
+async def busca(p: Pergunta):
     inicio = time.time()
     b = obter_buscador()
     if not b:
         return {**montar_resposta({}, p.nome, acervo_vazio=True),
                 "erro": _erro_carga, "ms": 0}
-    resultado = b.buscar(p.pergunta, principais=p.limite, extras=3)
+    # `async def` + fila própria: o event loop segue livre para aceitar novas
+    # conexões enquanto a busca ocupa o trabalhador dedicado.
+    resultado = await asyncio.get_event_loop().run_in_executor(
+        _FILA_BUSCA, _buscar_em_cache, p.pergunta, p.limite)
     resposta = montar_resposta(resultado, p.nome)
     return {
         **resposta,

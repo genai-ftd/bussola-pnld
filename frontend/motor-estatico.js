@@ -159,7 +159,11 @@ window.BUSSOLA_ESTATICO = (function(){
     var termos = {}, toks = tokenizar(pergunta), i;
     for(i = 0; i < toks.length; i++) termos[toks[i]] = 1;
 
-    var frases = texto.split(/(?<=[.!?])\s+/);
+    // Divide após . ! ? sem usar lookbehind: Safari só passou a suportá-lo na
+    // 16.4, e um literal de regex inválido é erro de parse — derrubaria este
+    // arquivo inteiro em vez de degradar, deixando o chat mudo no iPhone.
+    var SEP = "\u0000";
+    var frases = texto.replace(/([.!?])\s+/g, "$1" + SEP).split(SEP);
     var melhor = frases[0] || texto.slice(0, limite), melhorNota = -1;
     for(i = 0; i < frases.length; i++){
       var janela = "";

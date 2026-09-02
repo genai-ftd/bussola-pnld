@@ -2,7 +2,6 @@ fastapi==0.128.8
 numpy==1.26.4
 PyMuPDF==1.26.5
 python-dotenv==1.2.1
-rank-bm25==0.2.2
 requests==2.32.5
 sentence-transformers==2.7.0
 torch==2.2.2

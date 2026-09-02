@@ -95,8 +95,13 @@ curl -s localhost:8000/api/busca -H 'Content-Type: application/json' \
 
 1. Copie o PDF para `data/pdfs/`.
 2. `.venv/bin/python ingest/build_catalog.py` — descobre título oficial e link do Issuu.
-3. `.venv/bin/python ingest/build_index.py` — reconstrói o índice inteiro.
+3. `.venv/bin/python ingest/build_index.py` — vetoriza só o que mudou.
 4. Reinicie a API.
+
+A ingestão mantém um cache por obra em `data/index/obras/`, chaveado pelo hash do
+PDF e pelo nome do modelo: acrescentar um livro custa a vetorização desse livro,
+não do acervo inteiro (medido: 249 s na primeira execução, 1,6 s na segunda, sem
+sequer carregar o modelo). Use `--refazer` para ignorar o cache.
 
 O casamento com o Issuu é feito por **tamanho do arquivo em bytes** (é literalmente o
 mesmo arquivo que foi publicado) e, como reserva, por nome de arquivo + nº de páginas.

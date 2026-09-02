@@ -6,4 +6,6 @@ cd "$(dirname "$0")/.."
 HOST="${BUSSOLA_API_HOST:-127.0.0.1}"
 PORT="${BUSSOLA_API_PORT:-8000}"
 echo "Bússola PNLD em http://${HOST}:${PORT}/  (Ctrl+C para parar)"
-exec .venv/bin/uvicorn api.main:app --host "$HOST" --port "$PORT" --reload
+# via `python -m`: o script de console do venv guarda um shebang absoluto
+# e quebra se a pasta do projeto for movida ou renomeada
+exec .venv/bin/python -m uvicorn api.main:app --host "$HOST" --port "$PORT" --reload
