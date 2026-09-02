@@ -1,0 +1,383 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bússola PNLD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Lora:ital,wght@0,400;1,400&display=swap">
+<style>
+  /* Identidade herdada do protótipo original da Bússola (paleta FTD/PNLD).
+     Tema único e deliberado: a página reproduz um portal claro, então todas as
+     cores são pintadas explicitamente e nada depende do tema do visualizador. */
+  :root{
+    --azul:#2e56d9; --azul-fundo:#142d80; --azul-tint:#eaefff;
+    --ambar:#f5a623; --ambar-tint:#fff3de; --coral:#f0566b;
+    --tinta:#16244a; --tinta-suave:#566089; --tinta-fraca:#8b93b8;
+    --papel:#ffffff; --painel:#f5f7fb; --borda:#e3e8f2; --borda-suave:#ecf0f8;
+    --sombra-fab:0 10px 24px -6px rgba(20,45,128,.45);
+    --sombra-painel:0 24px 60px -16px rgba(10,20,55,.35), 0 4px 16px -4px rgba(10,20,55,.2);
+    --ui:'Poppins',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+    --livro:'Lora',Georgia,'Times New Roman',serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:#0c1636;
+    font-family:var(--ui);color:var(--tinta);-webkit-font-smoothing:antialiased}
+  button,input{font-family:inherit}
+  :focus-visible{outline:3px solid var(--ambar);outline-offset:2px}
+
+  /* ---------- fundo: print do portal, inerte ---------- */
+  .fundo{position:fixed;inset:0;background-image:url("assets/portal-pnld.jpg");
+    background-size:cover;background-position:top center;background-repeat:no-repeat;
+    pointer-events:none;user-select:none}
+  .scrim{position:fixed;inset:0;background:rgba(9,16,41,.42);opacity:0;
+    pointer-events:none;transition:opacity .25s ease}
+  body.aberto .scrim{opacity:1}
+  .selo{position:fixed;top:16px;left:16px;z-index:5;font-size:.7rem;font-weight:700;
+    letter-spacing:.05em;text-transform:uppercase;color:var(--azul-fundo);
+    background:rgba(255,255,255,.93);border:1px solid rgba(20,45,128,.15);
+    padding:6px 11px;border-radius:999px;box-shadow:0 2px 10px rgba(10,20,55,.12)}
+
+  /* ---------- botão flutuante ---------- */
+  .fab{position:fixed;right:22px;bottom:22px;z-index:40;border:0;cursor:pointer;
+    background:var(--azul);color:#fff;border-radius:999px;padding:14px 22px;
+    font-size:.95rem;font-weight:600;box-shadow:var(--sombra-fab);
+    display:flex;align-items:center;gap:10px;transition:transform .18s ease,background .18s ease}
+  .fab:hover{transform:translateY(-2px);background:#2547be}
+  .fab .pino{width:9px;height:9px;border-radius:50%;background:var(--ambar);flex:none}
+  body.aberto .fab{transform:translateY(8px) scale(.94);opacity:0;pointer-events:none}
+
+  /* ---------- painel do chat ---------- */
+  .painel{position:fixed;right:22px;bottom:22px;z-index:50;width:404px;
+    height:min(640px,calc(100vh - 44px));background:var(--painel);border-radius:20px;
+    box-shadow:var(--sombra-painel);display:flex;flex-direction:column;overflow:hidden;
+    opacity:0;transform:translateY(14px) scale(.98);pointer-events:none;
+    transition:opacity .22s ease,transform .22s ease}
+  body.aberto .painel{opacity:1;transform:none;pointer-events:auto}
+
+  .cabecalho{background:var(--azul);color:#fff;padding:16px 18px;display:flex;
+    align-items:center;justify-content:space-between;gap:12px;flex:none}
+  .cabecalho h1{margin:0;font-size:1rem;font-weight:700;letter-spacing:-.01em}
+  .cabecalho p{margin:2px 0 0;font-size:.72rem;opacity:.82;font-weight:400}
+  .fechar{background:rgba(255,255,255,.14);border:0;color:#fff;width:30px;height:30px;
+    border-radius:9px;font-size:1.1rem;line-height:1;cursor:pointer;flex:none}
+  .fechar:hover{background:rgba(255,255,255,.26)}
+
+  .conversa{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:18px;
+    display:flex;flex-direction:column;gap:13px}
+
+  .balao{max-width:88%;padding:12px 14px;border-radius:16px;font-size:.86rem;
+    line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+  .bot{background:var(--papel);border:1px solid var(--borda);
+    border-bottom-left-radius:5px;align-self:flex-start;color:var(--tinta)}
+  .eu{background:var(--azul);color:#fff;border-bottom-right-radius:5px;align-self:flex-end}
+
+  /* ---------- cartão de resultado ---------- */
+  .cartao{align-self:stretch;background:var(--papel);border:1px solid var(--borda);
+    border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+  .cartao h2{margin:0;font-size:.85rem;font-weight:700;line-height:1.35;
+    text-wrap:balance;color:var(--tinta)}
+  .etiquetas{display:flex;flex-wrap:wrap;gap:6px}
+  .etiqueta{background:var(--azul-tint);color:var(--azul-fundo);font-size:.65rem;
+    font-weight:600;letter-spacing:.02em;padding:4px 9px;border-radius:999px}
+  .citacao{margin:0;font-family:var(--livro);font-style:italic;font-size:.86rem;
+    line-height:1.62;color:#3b4468;border-left:3px solid var(--ambar);padding-left:12px}
+  .rodape{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    flex-wrap:wrap;border-top:1px solid var(--borda-suave);padding-top:11px}
+  .pagina{font-size:.72rem;color:var(--tinta-suave);font-weight:500;
+    font-variant-numeric:tabular-nums}
+  .abrir{background:var(--ambar);color:#3d2900;text-decoration:none;font-weight:700;
+    font-size:.75rem;padding:9px 14px;border-radius:9px;white-space:nowrap}
+  .abrir:hover{background:#e0951a}
+  .abrir[aria-disabled="true"]{background:var(--borda);color:var(--tinta-fraca);
+    pointer-events:none}
+
+  /* ---------- também encontrei ---------- */
+  .tambem{align-self:stretch;background:var(--papel);border:1px solid var(--borda);
+    border-radius:14px;padding:4px 14px}
+  .tambem summary{cursor:pointer;font-size:.76rem;font-weight:600;color:var(--azul);
+    padding:10px 0;list-style:none}
+  .tambem summary::-webkit-details-marker{display:none}
+  .tambem summary::before{content:"▸ ";display:inline-block;transition:transform .15s}
+  .tambem[open] summary::before{content:"▾ "}
+  .tambem ul{list-style:none;margin:0;padding:0 0 8px;display:flex;flex-direction:column;gap:9px}
+  .tambem li{font-size:.76rem;line-height:1.45;display:flex;justify-content:space-between;
+    align-items:baseline;gap:12px;border-top:1px solid var(--borda-suave);padding-top:9px}
+  .tambem a{color:var(--azul);font-weight:600;text-decoration:none;white-space:nowrap}
+  .tambem a:hover{text-decoration:underline}
+
+  /* ---------- sugestões ---------- */
+  .sugestoes{display:flex;flex-wrap:wrap;gap:7px;align-self:flex-start}
+  .sugestoes button{background:var(--papel);border:1px solid var(--borda);
+    color:var(--azul-fundo);border-radius:999px;padding:8px 13px;font-size:.75rem;
+    font-weight:500;cursor:pointer;transition:border-color .15s,background .15s}
+  .sugestoes button:hover{border-color:var(--azul);background:var(--azul-tint)}
+
+  /* ---------- digitando ---------- */
+  .digitando{display:flex;gap:5px;align-items:center;padding:14px}
+  .digitando i{width:6px;height:6px;border-radius:50%;background:var(--tinta-fraca);
+    display:block;animation:pulsa 1.2s infinite}
+  .digitando i:nth-child(2){animation-delay:.15s}
+  .digitando i:nth-child(3){animation-delay:.3s}
+  @keyframes pulsa{0%,60%,100%{opacity:.25;transform:translateY(0)}
+    30%{opacity:1;transform:translateY(-3px)}}
+
+  /* ---------- caixa de escrita ---------- */
+  .escrita{display:flex;gap:8px;padding:12px;background:var(--papel);
+    border-top:1px solid var(--borda);flex:none}
+  .escrita input{flex:1;min-width:0;border:1px solid var(--borda);border-radius:11px;
+    padding:12px 14px;font-size:.86rem;color:var(--tinta);background:var(--painel)}
+  .escrita input::placeholder{color:var(--tinta-fraca)}
+  .escrita input:focus{outline:none;border-color:var(--azul);background:var(--papel)}
+  .escrita button{background:var(--azul);color:#fff;border:0;border-radius:11px;
+    padding:0 18px;font-weight:600;font-size:.82rem;cursor:pointer}
+  .escrita button:hover:not(:disabled){background:#2547be}
+  .escrita button:disabled{opacity:.45;cursor:not-allowed}
+
+  .nota{padding:0 18px 16px;font-size:.66rem;line-height:1.5;color:var(--tinta-fraca);
+    text-align:center}
+
+  @media (max-width:560px){
+    /* No celular a foto do portal é paisagem e o viewport é retrato: com
+       'cover' o zoom cortaria a manchete no meio. Ancoramos no topo à esquerda
+       numa escala legível e deixamos o resto cortar. */
+    .fundo{background-size:auto 66vh;background-position:top left;background-color:#fff}
+    .selo{top:auto;bottom:18px;left:16px}
+    .painel{right:0;bottom:0;left:0;width:auto;height:100dvh;border-radius:0}
+    .fab{right:16px;bottom:16px;padding:13px 18px}
+    .selo{font-size:.62rem;padding:5px 9px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.01ms !important;transition-duration:.01ms !important}
+  }
+</style>
+
+<div class="fundo" aria-hidden="true"></div>
+<div class="scrim" aria-hidden="true"></div>
+<span class="selo">Protótipo · PNLD 2027</span>
+
+<button class="fab" id="fab" aria-haspopup="dialog"><span class="pino"></span>Bússola PNLD</button>
+
+<div class="painel" id="painel" role="dialog" aria-modal="false" aria-label="Bússola PNLD">
+  <div class="cabecalho">
+    <div>
+      <h1>Bússola PNLD</h1>
+      <p>Encontre o conteúdo dentro das obras</p>
+    </div>
+    <button class="fechar" id="fechar" aria-label="Fechar">&times;</button>
+  </div>
+  <div class="conversa" id="conversa" aria-live="polite"></div>
+  <form class="escrita" id="formulario">
+    <input id="entrada" autocomplete="off" placeholder="Digite sua mensagem…" aria-label="Sua mensagem">
+    <button type="submit" id="enviar">Enviar</button>
+  </form>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var SUGESTOES = [
+    "atividades de leitura para o 3º ano",
+    "como trabalhar cantigas populares",
+    "avaliação diagnóstica em espanhol",
+    "proposta de arte com Tarsila do Amaral"
+  ];
+
+  var el = {
+    fab: document.getElementById("fab"),
+    painel: document.getElementById("painel"),
+    fechar: document.getElementById("fechar"),
+    conversa: document.getElementById("conversa"),
+    form: document.getElementById("formulario"),
+    entrada: document.getElementById("entrada"),
+    enviar: document.getElementById("enviar")
+  };
+
+  var estado = { nome: "", iniciado: false, ocupado: false };
+  try { estado.nome = localStorage.getItem("bussola_nome") || ""; } catch(e) {}
+
+  /* ============================ apresentação ============================ */
+
+  function balao(classe, texto){
+    var d = document.createElement("div");
+    d.className = "balao " + classe;
+    d.textContent = texto;
+    el.conversa.appendChild(d);
+    rolar();
+    return d;
+  }
+  function rolar(){ el.conversa.scrollTop = el.conversa.scrollHeight; }
+
+  function digitando(){
+    var d = document.createElement("div");
+    d.className = "balao bot digitando";
+    d.innerHTML = "<i></i><i></i><i></i>";
+    el.conversa.appendChild(d); rolar();
+    return d;
+  }
+
+  function sugestoes(){
+    var caixa = document.createElement("div");
+    caixa.className = "sugestoes";
+    SUGESTOES.forEach(function(s){
+      var b = document.createElement("button");
+      b.type = "button"; b.textContent = s;
+      b.onclick = function(){ caixa.remove(); enviarTexto(s); };
+      caixa.appendChild(b);
+    });
+    el.conversa.appendChild(caixa); rolar();
+  }
+
+  function cartao(r){
+    var c = document.createElement("div");
+    c.className = "cartao";
+
+    var h = document.createElement("h2");
+    h.textContent = r.titulo;
+    c.appendChild(h);
+
+    var tags = document.createElement("div");
+    tags.className = "etiquetas";
+    [r.colecao, r.disciplina, r.ano ? r.ano + "º ano" : null].forEach(function(t){
+      if(!t) return;
+      var s = document.createElement("span");
+      s.className = "etiqueta"; s.textContent = t;
+      tags.appendChild(s);
+    });
+    if(tags.childNodes.length) c.appendChild(tags);
+
+    var q = document.createElement("p");
+    q.className = "citacao";
+    q.textContent = "“" + r.trecho + "”";
+    c.appendChild(q);
+
+    var rod = document.createElement("div");
+    rod.className = "rodape";
+    var p = document.createElement("span");
+    p.className = "pagina";
+    p.textContent = r.descricao_pagina;
+    rod.appendChild(p);
+
+    var a = document.createElement("a");
+    a.className = "abrir";
+    if(r.link){
+      a.textContent = "Abrir conteúdo";
+      a.href = r.link; a.target = "_blank"; a.rel = "noopener noreferrer";
+    } else {
+      a.textContent = "Link indisponível";
+      a.setAttribute("aria-disabled", "true");
+    }
+    rod.appendChild(a);
+
+    c.appendChild(rod);
+    el.conversa.appendChild(c);
+  }
+
+  function tambemEncontrei(lista){
+    if(!lista || !lista.length) return;
+    var d = document.createElement("details");
+    d.className = "tambem";
+    var s = document.createElement("summary");
+    s.textContent = "Também encontrei (" + lista.length + ")";
+    d.appendChild(s);
+    var ul = document.createElement("ul");
+    lista.forEach(function(r){
+      var li = document.createElement("li");
+      var t = document.createElement("span");
+      t.textContent = r.titulo + " — " + r.descricao_pagina;
+      li.appendChild(t);
+      if(r.link){
+        var a = document.createElement("a");
+        a.href = r.link; a.target = "_blank"; a.rel = "noopener noreferrer";
+        a.textContent = "abrir";
+        li.appendChild(a);
+      }
+      ul.appendChild(li);
+    });
+    d.appendChild(ul);
+    el.conversa.appendChild(d);
+    rolar();
+  }
+
+  /* ================================ fluxo =============================== */
+
+  function iniciar(){
+    if(estado.iniciado) return;
+    estado.iniciado = true;
+    if(estado.nome){
+      balao("bot", "Oi de novo, " + estado.nome + "! Sobre o que você quer pesquisar nas obras do PNLD 2027?");
+      sugestoes();
+    } else {
+      balao("bot", "Olá! Eu sou a Bússola do PNLD. Eu procuro conteúdo dentro das obras do PNLD 2027 e te levo direto à página.\n\nAntes de começar: como posso te chamar?");
+    }
+  }
+
+  function enviarTexto(texto){
+    texto = (texto || "").trim();
+    if(!texto || estado.ocupado) return;
+    balao("eu", texto);
+    el.entrada.value = "";
+
+    if(!estado.nome){
+      estado.nome = texto.replace(/[^\p{L}\p{N}\s'.-]/gu, "").slice(0, 40).trim() || "Professor(a)";
+      try { localStorage.setItem("bussola_nome", estado.nome); } catch(e) {}
+      balao("bot", "Prazer, " + estado.nome + "! Me conta o que você procura — pode ser o tema da aula, um gênero textual, uma habilidade da BNCC ou uma dúvida do dia a dia.");
+      sugestoes();
+      return;
+    }
+    perguntar(texto);
+  }
+
+  function perguntar(pergunta){
+    estado.ocupado = true;
+    el.enviar.disabled = true;
+    var carregando = digitando();
+
+    MOTOR.buscar(pergunta, estado.nome).then(function(d){
+      carregando.remove();
+      balao("bot", d.texto);
+      (d.resultados || []).forEach(cartao);
+      tambemEncontrei(d.tambem_encontrei);
+      rolar();
+    }).catch(function(e){
+      carregando.remove();
+      balao("bot", "Não consegui completar a busca agora (" + e.message + ").");
+    }).then(function(){
+      estado.ocupado = false;
+      el.enviar.disabled = false;
+      if(window.innerWidth > 560) el.entrada.focus();
+    });
+  }
+
+  function abrir(){
+    document.body.classList.add("aberto");
+    iniciar();
+    if(window.innerWidth > 560) el.entrada.focus();
+  }
+  function fechar(){ document.body.classList.remove("aberto"); }
+
+  el.fab.onclick = abrir;
+  el.fechar.onclick = fechar;
+  el.form.onsubmit = function(ev){ ev.preventDefault(); enviarTexto(el.entrada.value); };
+  document.addEventListener("keydown", function(ev){ if(ev.key === "Escape") fechar(); });
+
+  /* =============================== motores ==============================
+     A UI é a mesma nos dois modos. Local, ela fala com a API FastAPI, que roda
+     a busca semântica completa. Publicada, ela usa o índice embutido na página.
+     ====================================================================== */
+
+  var MOTOR = window.BUSSOLA_ESTATICO
+    ? window.BUSSOLA_ESTATICO
+    : {
+        buscar: function(pergunta, nome){
+          return fetch("/api/busca", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ pergunta: pergunta, nome: nome, limite: 3 })
+          }).then(function(r){
+            if(!r.ok) throw new Error("HTTP " + r.status);
+            return r.json();
+          });
+        }
+      };
+})();
+</script>

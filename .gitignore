@@ -1,0 +1,30 @@
+# --- segredos: NUNCA commitar ---
+.env
+.env.*
+!.env.example
+credentials.txt
+*credentials*
+*.pem
+*.key
+
+# --- conteúdo protegido: PDFs do PNLD não vão para o repositório ---
+data/pdfs/*
+!data/pdfs/.gitkeep
+
+# --- artefatos gerados pela ingestão ---
+data/index/*
+!data/index/.gitkeep
+data/issuu_publications.json
+
+# --- python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+
+# --- modelos baixados / cache do HuggingFace ---
+models/
+.cache/
+dist/

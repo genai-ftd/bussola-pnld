@@ -1,0 +1,245 @@
+"""Busca híbrida (semântica + léxica) sobre o índice gerado pela ingestão.
+
+- Semântica: embeddings multilíngues, similaridade de cosseno (produto interno
+  em vetores normalizados). Índice denso simples em memória com NumPy — exato,
+  sem dependência extra; para acervo maior, trocar por FAISS (ver README).
+- Léxica: BM25, que segura bem termos exatos ("BNCC", "EF15LP03", "cantiga").
+- Fusão: Reciprocal Rank Fusion, que dispensa calibrar escalas diferentes.
+- Filtros de metadado (ano/disciplina/coleção) saem da pergunta por regex,
+  sem LLM, e entram como reforço multiplicativo — nunca zeram o resultado.
+"""
+import json
+import os
+import re
+
+import numpy as np
+from rank_bm25 import BM25Okapi
+
+from ingest.metadata import norm, parse_pergunta
+
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DIR_INDICE = os.path.join(RAIZ, "data", "index")
+CATALOGO = os.path.join(RAIZ, "data", "catalog.json")
+
+K_RRF = 60          # constante padrão do Reciprocal Rank Fusion
+POOL = 120          # quantos candidatos cada estratégia contribui
+LIMIAR_RELEVANCIA = 0.42   # abaixo disso, tratamos como "não encontrei"
+PESO_DENSO = 0.06   # desempate: deixa uma similaridade muito maior superar o ranking
+REPETICOES_BOILERPLATE = 3  # texto que se repete N vezes na obra é paratexto
+
+STOPWORDS = set("""
+a as o os um uma uns umas de do da dos das em no na nos nas por para pelo pela com sem sobre
+e ou mas que qual quais quando onde como quem cujo se ao aos à às pra pro entre até
+eu voce você tu nos nós vos eles elas ele ela meu minha seu sua nosso nossa
+ser sou é sao são era eram foi foram tem tenho temos ter haver há hao
+me te lhe lhes isso isto aquilo esse essa este esta aquele aquela
+mais menos muito pouco tambem também ja já nao não sim so só bem
+quero queria gostaria preciso pode posso poderia tem qual me da
+livro livros pagina paginas página páginas material conteudo conteúdo
+""".split())
+
+
+def tokenizar(texto: str):
+    return [t for t in norm(texto).split() if len(t) > 2 and t not in STOPWORDS]
+
+
+def _rrf(ordem):
+    """rank -> pontuação RRF, para uma lista de índices já ordenada."""
+    return {idx: 1.0 / (K_RRF + posicao) for posicao, idx in enumerate(ordem)}
+
+
+class Buscador:
+    def __init__(self, modelo_nome=None):
+        self.catalogo = {o["id"]: o for o in self._ler_json(CATALOGO)}
+        self.chunks = self._ler_chunks()
+        self.embeddings = np.load(os.path.join(DIR_INDICE, "embeddings.npy"))
+        self.manifest = self._ler_json(os.path.join(DIR_INDICE, "manifest.json"))
+        if len(self.chunks) != self.embeddings.shape[0]:
+            raise RuntimeError("índice inconsistente: refaça `python ingest/build_index.py`")
+
+        from sentence_transformers import SentenceTransformer
+        self.modelo = SentenceTransformer(modelo_nome or self.manifest["modelo"])
+        self.bm25 = BM25Okapi([tokenizar(c["texto"]) for c in self.chunks])
+        self.repeticoes = self._contar_repeticoes()
+
+    # ------------------------------------------------------------------ carga
+    @staticmethod
+    def _ler_json(caminho):
+        with open(caminho, encoding="utf-8") as fh:
+            return json.load(fh)
+
+    @staticmethod
+    def _ler_chunks():
+        caminho = os.path.join(DIR_INDICE, "chunks.jsonl")
+        if not os.path.exists(caminho):
+            raise RuntimeError("índice não encontrado. Rode `python ingest/build_index.py`.")
+        with open(caminho, encoding="utf-8") as fh:
+            return [json.loads(linha) for linha in fh if linha.strip()]
+
+    def _contar_repeticoes(self):
+        """Quantas vezes cada texto se repete dentro da mesma obra.
+
+        Referências bibliográficas comentadas, expedientes e cabeçalhos de seção
+        aparecem idênticos em dezenas de páginas. Contar a repetição identifica
+        esse paratexto sem precisar de lista de palavras proibidas.
+        """
+        contagem = {}
+        for c in self.chunks:
+            contagem[(c["obra_id"], c["texto"])] = contagem.get((c["obra_id"], c["texto"]), 0) + 1
+        return [contagem[(c["obra_id"], c["texto"])] for c in self.chunks]
+
+    # ------------------------------------------------------------------ busca
+    def _fator_metadado(self, obra, filtros):
+        fator = 1.0
+        if filtros.get("ano") and obra.get("ano") == filtros["ano"]:
+            fator += 0.50
+        if filtros.get("disciplina") and obra.get("disciplina") == filtros["disciplina"]:
+            fator += 0.35
+        if filtros.get("colecao") and obra.get("colecao") == filtros["colecao"]:
+            fator += 0.25
+        return fator
+
+    def _fator_paratexto(self, idx, chunk):
+        """Rebaixa (sem eliminar) o que nunca é resposta útil para o professor."""
+        fator = 1.0
+        if self.repeticoes[idx] >= REPETICOES_BOILERPLATE:
+            fator *= 0.45          # referências/expediente repetidos na obra inteira
+        if chunk["pagina_fisica"] <= 2:
+            fator *= 0.45          # capa e folha de rosto
+        return fator
+
+    def buscar(self, pergunta: str, principais: int = 3, extras: int = 3):
+        filtros = parse_pergunta(pergunta)
+
+        vetor = self.modelo.encode([pergunta], convert_to_numpy=True,
+                                   normalize_embeddings=True).astype("float32")[0]
+        similaridades = self.embeddings @ vetor
+        top_denso = np.argsort(-similaridades)[:POOL]
+
+        tokens = tokenizar(pergunta)
+        if tokens:
+            pontos_bm25 = np.asarray(self.bm25.get_scores(tokens))
+            top_lexico = [i for i in np.argsort(-pontos_bm25)[:POOL] if pontos_bm25[i] > 0]
+        else:
+            pontos_bm25, top_lexico = np.zeros(len(self.chunks)), []
+
+        fundido = _rrf(list(top_denso))
+        for idx, valor in _rrf(list(top_lexico)).items():
+            fundido[idx] = fundido.get(idx, 0.0) + valor
+
+        classificados = []
+        for idx, base in fundido.items():
+            chunk = self.chunks[idx]
+            obra = self.catalogo.get(chunk["obra_id"], {})
+            pontuacao = (base + PESO_DENSO * max(float(similaridades[idx]), 0.0)) \
+                * self._fator_metadado(obra, filtros) \
+                * self._fator_paratexto(idx, chunk)
+            classificados.append((pontuacao, idx))
+        classificados.sort(reverse=True)
+
+        selecionados = self._diversificar(classificados, similaridades, pergunta,
+                                          principais, extras)
+
+        melhor = max((r["similaridade"] for r in selecionados), default=0.0)
+        return {
+            "pergunta": pergunta,
+            "filtros": filtros,
+            "confiante": melhor >= LIMIAR_RELEVANCIA,
+            "principais": selecionados[:principais],
+            "tambem_encontrei": selecionados[principais:principais + extras],
+        }
+
+    def _diversificar(self, classificados, similaridades, pergunta, principais, extras):
+        """Seleciona os resultados privilegiando variedade de obras.
+
+        Os cartões principais trazem no máximo um trecho por obra: o acervo tem
+        manuais do professor longos que casam com quase qualquer pergunta
+        pedagógica, e sem esse limite eles ocupariam a resposta inteira. O
+        excedente da mesma obra desce para "Também encontrei".
+        """
+        vistos_pagina = set()
+        melhores_por_obra, restantes = [], []
+        obras_usadas = set()
+
+        for pontuacao, idx in classificados:
+            chunk = self.chunks[idx]
+            chave = (chunk["obra_id"], chunk["pagina_fisica"])
+            if chave in vistos_pagina:
+                continue
+            vistos_pagina.add(chave)
+            if chunk["obra_id"] not in obras_usadas:
+                obras_usadas.add(chunk["obra_id"])
+                melhores_por_obra.append((pontuacao, idx))
+            elif len(restantes) < (principais + extras) * 4:
+                # a varredura precisa alcançar TODAS as obras do acervo antes de
+                # parar, senão as obras mais longas ocupam a resposta inteira
+                restantes.append((pontuacao, idx))
+
+        escolhidos = melhores_por_obra[:principais]
+        # completa com o que sobrou, sem repetir a mesma obra mais de duas vezes
+        contagem = {}
+        for p, i in escolhidos:
+            oid = self.chunks[i]["obra_id"]
+            contagem[oid] = contagem.get(oid, 0) + 1
+        for p, i in sorted(melhores_por_obra[principais:] + restantes, reverse=True):
+            if len(escolhidos) >= principais + extras:
+                break
+            oid = self.chunks[i]["obra_id"]
+            if contagem.get(oid, 0) >= 2:
+                continue
+            contagem[oid] = contagem.get(oid, 0) + 1
+            escolhidos.append((p, i))
+
+        return [self._montar(i, p, float(similaridades[i]), pergunta) for p, i in escolhidos]
+
+    # -------------------------------------------------------------- resultado
+    def _montar(self, idx, pontuacao, similaridade, pergunta):
+        from ingest.issuu import link_pagina
+        chunk = self.chunks[idx]
+        obra = self.catalogo.get(chunk["obra_id"], {})
+        issuu = obra.get("issuu", {})
+        offset = issuu.get("offset_pagina")
+        pagina_issuu = chunk["pagina_fisica"] + (offset or 0)
+        return {
+            "obra_id": chunk["obra_id"],
+            "titulo": obra.get("titulo", chunk["obra_id"]),
+            "colecao": obra.get("colecao"),
+            "disciplina": obra.get("disciplina"),
+            "ano": obra.get("ano"),
+            "pagina_fisica": chunk["pagina_fisica"],
+            "pagina_impressa": chunk.get("pagina_impressa") or None,
+            "pagina_issuu": pagina_issuu,
+            "offset_confiavel": offset is not None,
+            "trecho": recortar(chunk["texto"], pergunta),
+            "link": link_pagina(issuu.get("public_location", ""), pagina_issuu),
+            "similaridade": round(float(similaridade), 4),
+            "pontuacao": round(float(pontuacao), 6),
+        }
+
+
+_FRASES = re.compile(r"(?<=[.!?])\s+")
+
+
+def recortar(texto: str, pergunta: str, limite: int = 260) -> str:
+    """Escolhe a janela do trecho com maior sobreposição de termos da pergunta.
+
+    Determinístico: contagem de termos, sem geração de texto.
+    """
+    if len(texto) <= limite:
+        return texto
+    termos = set(tokenizar(pergunta))
+    frases = _FRASES.split(texto)
+    melhor_janela, melhor_nota = frases[0] if frases else texto[:limite], -1
+    for i in range(len(frases)):
+        janela = ""
+        for frase in frases[i:]:
+            if len(janela) + len(frase) + 1 > limite:
+                break
+            janela = (janela + " " + frase).strip()
+        if not janela:
+            janela = frases[i][:limite]
+        nota = sum(1 for t in tokenizar(janela) if t in termos)
+        if nota > melhor_nota:
+            melhor_nota, melhor_janela = nota, janela
+    corte = melhor_janela.strip()
+    return corte if corte.endswith((".", "!", "?")) else corte + "…"
