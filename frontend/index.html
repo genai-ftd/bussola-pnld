@@ -129,9 +129,6 @@
   .escrita button:hover:not(:disabled){background:#2547be}
   .escrita button:disabled{opacity:.45;cursor:not-allowed}
 
-  .escopo{align-self:stretch;background:var(--azul-tint);border-radius:12px;
-    padding:11px 13px;font-size:.74rem;line-height:1.55;color:var(--azul-fundo)}
-  .escopo b{font-weight:600}
 
   @media (max-width:560px){
     /* No celular a foto do portal é paisagem e o viewport é retrato: com
@@ -306,37 +303,13 @@
 
   /* ================================ fluxo =============================== */
 
-  /* O acervo indexado é uma amostra, e o professor não tem como adivinhar isso.
-     Declarar o escopo na abertura evita a maior parte das recusas — ele já sabe
-     onde a Bússola enxerga antes de perguntar. O texto sai dos dados, não é
-     escrito à mão, então continua verdadeiro quando novas obras entrarem. */
-  function caixaEscopo(){
-    MOTOR.escopo().then(function(e){
-      if(!e || !e.obras) return;
-      var d = document.createElement("div");
-      d.className = "escopo";
-      d.appendChild(document.createTextNode("Hoje eu enxergo "));
-      var forte = document.createElement("b");
-      forte.textContent = e.obras + (e.obras === 1 ? " obra" : " obras")
-        + " dos Anos Iniciais";
-      d.appendChild(forte);
-      d.appendChild(document.createTextNode(
-        " — " + e.disciplinas.join(", ") + ". Fora disso eu vou te dizer que não "
-        + "encontrei, em vez de inventar."));
-      el.conversa.appendChild(d);
-      rolar();
-    }).catch(function(){});
-  }
-
   function iniciar(){
     if(estado.iniciado) return;
     estado.iniciado = true;
     if(estado.nome){
       balao("bot", "Oi de novo, " + estado.nome + "! Sobre o que você quer pesquisar?");
-      caixaEscopo();
     } else {
       balao("bot", "Olá! Eu sou a Bússola do PNLD. Eu procuro conteúdo dentro das obras do PNLD 2027 e te levo direto à página.\n\nAntes de começar: como posso te chamar?");
-      caixaEscopo();
     }
   }
 
@@ -396,18 +369,6 @@
   var MOTOR = window.BUSSOLA_ESTATICO
     ? window.BUSSOLA_ESTATICO
     : {
-        escopo: function(){
-          return fetch("/api/catalogo").then(function(r){ return r.json(); })
-            .then(function(d){
-              var vistos = {}, disciplinas = [];
-              (d.obras || []).forEach(function(o){
-                if(o.disciplina && !vistos[o.disciplina]){
-                  vistos[o.disciplina] = 1; disciplinas.push(o.disciplina);
-                }
-              });
-              return { obras: (d.obras || []).length, disciplinas: disciplinas };
-            });
-        },
         buscar: function(pergunta, nome){
           return fetch("/api/busca", {
             method: "POST",

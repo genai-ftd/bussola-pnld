@@ -449,13 +449,5 @@ window.BUSSOLA_ESTATICO = (function(){
     });
   }
 
-  function escopo(){
-    var vistos = {}, disciplinas = [];
-    D.obras.forEach(function(o){
-      if(o[2] && !vistos[o[2]]){ vistos[o[2]] = 1; disciplinas.push(o[2]); }
-    });
-    return Promise.resolve({ obras: D.obras.length, disciplinas: disciplinas });
-  }
-
-  return { buscar: buscar, escopo: escopo };
+  return { buscar: buscar };
 })();
