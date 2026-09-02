@@ -21,7 +21,7 @@ from api.search import Buscador
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIR_FRONT = os.path.join(RAIZ, "frontend")
 DIR_DIST = os.path.join(RAIZ, "dist")
-DIR_DOCS = os.path.join(RAIZ, "docs")
+DIR_PAGES = RAIZ  # o GitHub Pages desta POC serve a raiz do main
 LIMITE_TEXTO = 620          # o bastante para BM25 e para recortar a citação
 
 PERGUNTAS_BANCO = [
@@ -122,17 +122,16 @@ def main():
     assert marcador in html, "não achei o script principal para injetar antes"
     html = html.replace(marcador, injecao + marcador, 1)
 
-    # dist/ é o artefato local; docs/ é o que o GitHub Pages publica
+    # dist/ é o artefato local; index.html na raiz é o que o GitHub Pages publica
     os.makedirs(DIR_DIST, exist_ok=True)
-    os.makedirs(DIR_DOCS, exist_ok=True)
     saidas = [os.path.join(DIR_DIST, "bussola-pnld.html"),
-              os.path.join(DIR_DOCS, "index.html")]
+              os.path.join(DIR_PAGES, "index.html")]
     for saida in saidas:
         with open(saida, "w", encoding="utf-8") as fh:
             fh.write(html)
         print("\n{} — {:.2f} MB".format(saida, os.path.getsize(saida) / 1024 / 1024))
     # impede o Jekyll de reprocessar a página no Pages
-    open(os.path.join(DIR_DOCS, ".nojekyll"), "w").close()
+    open(os.path.join(DIR_PAGES, ".nojekyll"), "w").close()
     return 0
 
 

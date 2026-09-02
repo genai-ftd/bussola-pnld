@@ -134,10 +134,12 @@ O fundo é o print do portal `pnld.ftd.com.br`, embutido como data URI a partir 
 
 ### GitHub Pages
 
-O build também escreve `docs/index.html` (com `.nojekyll`), que é o que o Pages serve.
-Para ligar: **Settings → Pages → Source: Deploy from a branch → `main` / `/docs`**.
-Depois de cada `build_static_demo.py`, commite `docs/` e dê push — o Pages republica
-sozinho em cerca de um minuto.
+O build também escreve `index.html` na raiz (com `.nojekyll`), que é o que o Pages serve
+em **Settings → Pages → Source: Deploy from a branch → `main` / `(root)`**.
+Depois de cada `build_static_demo.py`, commite `index.html` e dê push — o Pages
+republica sozinho em cerca de um minuto.
+
+Publicado em <https://genai-ftd.github.io/bussola-pnld/>.
 
 ---
 
