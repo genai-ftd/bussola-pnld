@@ -168,9 +168,12 @@ Três faixas, em vez de um corte único:
 
 | cobertura | comportamento |
 |---|---|
-| ≥ 0,38 | responde direto |
-| 0,28 – 0,38 | responde **com ressalva explícita** |
-| < 0,28 | diz que não encontrou, e diz qual termo faltou |
+| ≥ 0,50 | responde direto |
+| 0,38 – 0,50 | responde **com ressalva explícita** |
+| < 0,38 | diz que não encontrou, e diz qual termo faltou |
+
+A cobertura também **ordena**, não só decide: uma página que contém o que foi
+perguntado vence uma que só se parece com a pergunta no espaço vetorial.
 
 ### Taxa de erro medida
 
@@ -179,10 +182,11 @@ Três faixas, em vez de um corte único:
 
 | | responde direto | com ressalva | recusa |
 |---|---|---|---|
-| **25 dentro do acervo** | 23 | 2 | **0** |
-| **19 fora do acervo** | **0** | 7 | 12 |
+| **25 dentro do acervo** | **25** | 0 | **0** |
+| **19 fora do acervo** | 2 | 2 | 15 |
 
-Zero resposta errada sem aviso; zero pergunta boa perdida. Para mover o ponto de
+Recall de 100% nas perguntas que o acervo responde, nenhuma recusa indevida, e
+2 em 19 perguntas de fora respondidas sem aviso (10,5%). Para mover o ponto de
 operação, mude `LIMIAR_ALTO` / `LIMIAR_BAIXO` em `api/confianca.py` e rode o
 harness de novo — a varredura mostra o custo de cada escolha.
 
@@ -192,8 +196,18 @@ determinístico se sustenta.
 
 ### Limite conhecido
 
-A ancoragem é lexical, então ela não distingue sentido: "sistema solar" casa com
-"filtro solar" e passa. Desambiguar exigiria outra camada.
+Os 2 erros restantes são colisão de sentido, não de calibragem, e valem ser
+olhados de perto antes de decidir o formato:
+
+- **"atividades sobre o sistema solar"** casa com "filtro solar" (orientação de
+  saúde), porque `solar` e `sistema` estão os dois na página.
+- **"dia da consciência negra"** casa com uma página que traz `consciência` e
+  `negra` em frases distintas — bonecas negras, representatividade.
+
+Os termos estão mesmo lá; nenhum corte lexical separa isso. Subir o limiar para
+pegá-los custa respostas boas — a varredura do harness mostra o câmbio. Resolver
+de verdade pede proximidade entre termos ou desambiguação de sentido, que é outra
+camada de trabalho.
 
 ## Perguntas sobre a coleção
 

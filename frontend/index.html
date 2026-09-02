@@ -78,8 +78,10 @@
   .etiquetas{display:flex;flex-wrap:wrap;gap:6px}
   .etiqueta{background:var(--azul-tint);color:var(--azul-fundo);font-size:.65rem;
     font-weight:600;letter-spacing:.02em;padding:4px 9px;border-radius:999px}
-  .citacao{margin:0;font-family:var(--livro);font-style:italic;font-size:.86rem;
-    line-height:1.62;color:#3b4468;border-left:3px solid var(--ambar);padding-left:12px}
+  .citacao{margin:0;font-family:var(--livro);font-style:italic;font-size:.84rem;
+    line-height:1.6;color:#3b4468;border-left:3px solid var(--ambar);padding-left:12px}
+  .citacao mark{background:var(--ambar-tint);color:#5a3d00;font-weight:600;
+    padding:0 2px;border-radius:3px}
   .rodape{display:flex;align-items:center;justify-content:space-between;gap:10px;
     flex-wrap:wrap;border-top:1px solid var(--borda-suave);padding-top:11px}
   .pagina{font-size:.72rem;color:var(--tinta-suave);font-weight:500;
@@ -93,23 +95,18 @@
   /* ---------- também encontrei ---------- */
   .tambem{align-self:stretch;background:var(--papel);border:1px solid var(--borda);
     border-radius:14px;padding:4px 14px}
-  .tambem summary{cursor:pointer;font-size:.76rem;font-weight:600;color:var(--azul);
-    padding:10px 0;list-style:none}
+  .tambem summary{cursor:pointer;font-size:.78rem;font-weight:600;color:var(--azul);
+    padding:14px 0;list-style:none;min-height:44px;display:flex;align-items:center}
   .tambem summary::-webkit-details-marker{display:none}
   .tambem summary::before{content:"▸ ";display:inline-block;transition:transform .15s}
   .tambem[open] summary::before{content:"▾ "}
   .tambem ul{list-style:none;margin:0;padding:0 0 8px;display:flex;flex-direction:column;gap:9px}
-  .tambem li{font-size:.76rem;line-height:1.45;display:flex;justify-content:space-between;
-    align-items:baseline;gap:12px;border-top:1px solid var(--borda-suave);padding-top:9px}
-  .tambem a{color:var(--azul);font-weight:600;text-decoration:none;white-space:nowrap}
+  .tambem li{font-size:.78rem;line-height:1.45;display:flex;justify-content:space-between;
+    align-items:center;gap:12px;border-top:1px solid var(--borda-suave);padding-top:6px}
+  .tambem a{color:var(--azul);font-weight:600;text-decoration:none;white-space:nowrap;
+    padding:12px 8px;margin:-12px -8px}
   .tambem a:hover{text-decoration:underline}
 
-  /* ---------- sugestões ---------- */
-  .sugestoes{display:flex;flex-wrap:wrap;gap:7px;align-self:flex-start}
-  .sugestoes button{background:var(--papel);border:1px solid var(--borda);
-    color:var(--azul-fundo);border-radius:999px;padding:8px 13px;font-size:.75rem;
-    font-weight:500;cursor:pointer;transition:border-color .15s,background .15s}
-  .sugestoes button:hover{border-color:var(--azul);background:var(--azul-tint)}
 
   /* ---------- digitando ---------- */
   .digitando{display:flex;gap:5px;align-items:center;padding:14px}
@@ -132,8 +129,9 @@
   .escrita button:hover:not(:disabled){background:#2547be}
   .escrita button:disabled{opacity:.45;cursor:not-allowed}
 
-  .nota{padding:0 18px 16px;font-size:.66rem;line-height:1.5;color:var(--tinta-fraca);
-    text-align:center}
+  .escopo{align-self:stretch;background:var(--azul-tint);border-radius:12px;
+    padding:11px 13px;font-size:.74rem;line-height:1.55;color:var(--azul-fundo)}
+  .escopo b{font-weight:600}
 
   @media (max-width:560px){
     /* No celular a foto do portal é paisagem e o viewport é retrato: com
@@ -166,7 +164,7 @@
   </div>
   <div class="conversa" id="conversa" aria-live="polite"></div>
   <form class="escrita" id="formulario">
-    <input id="entrada" autocomplete="off" placeholder="Digite sua mensagem…" aria-label="Sua mensagem">
+    <input id="entrada" autocomplete="off" placeholder="O que você procura nas obras?" aria-label="Sua mensagem">
     <button type="submit" id="enviar">Enviar</button>
   </form>
 </div>
@@ -174,15 +172,6 @@
 <script>
 (function(){
   "use strict";
-
-  var SUGESTOES = [
-    "atividades de leitura para o 3º ano",
-    "como trabalhar cantigas populares",
-    "Essa coleção trabalha as habilidades de leitura previstas pra esse ano?",
-    "Quais recursos de acessibilidade ela oferece?",
-    "Que material de apoio vem incluído pro professor?",
-    "Como a coleção trata turmas multisseriadas?"
-  ];
 
   var el = {
     fab: document.getElementById("fab"),
@@ -217,19 +206,36 @@
     return d;
   }
 
-  function sugestoes(){
-    var caixa = document.createElement("div");
-    caixa.className = "sugestoes";
-    SUGESTOES.forEach(function(s){
-      var b = document.createElement("button");
-      b.type = "button"; b.textContent = s;
-      b.onclick = function(){ caixa.remove(); enviarTexto(s); };
-      caixa.appendChild(b);
-    });
-    el.conversa.appendChild(caixa); rolar();
+  function semAcento(t){
+    return (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   }
 
-  function cartao(r){
+  /* Realça as palavras da pergunta dentro da citação. Monta nós de texto um a
+     um em vez de innerHTML: o trecho vem do livro, e nada que veio de fora
+     precisa ser interpretado como marcação. */
+  function citacao(trecho, termos){
+    var p = document.createElement("p");
+    p.className = "citacao";
+    p.appendChild(document.createTextNode("“"));
+    var alvo = {}, i;
+    for(i = 0; i < (termos || []).length; i++) alvo[termos[i]] = 1;
+
+    var partes = trecho.split(/(\s+)/);
+    for(i = 0; i < partes.length; i++){
+      var limpo = semAcento(partes[i]).toLowerCase().replace(/[^a-z0-9]/g, "");
+      if(limpo && alvo[limpo]){
+        var m = document.createElement("mark");
+        m.textContent = partes[i];
+        p.appendChild(m);
+      } else {
+        p.appendChild(document.createTextNode(partes[i]));
+      }
+    }
+    p.appendChild(document.createTextNode("”"));
+    return p;
+  }
+
+  function cartao(r, termos){
     var c = document.createElement("div");
     c.className = "cartao";
 
@@ -247,10 +253,7 @@
     });
     if(tags.childNodes.length) c.appendChild(tags);
 
-    var q = document.createElement("p");
-    q.className = "citacao";
-    q.textContent = "“" + r.trecho + "”";
-    c.appendChild(q);
+    c.appendChild(citacao(r.trecho, termos));
 
     var rod = document.createElement("div");
     rod.className = "rodape";
@@ -262,7 +265,7 @@
     var a = document.createElement("a");
     a.className = "abrir";
     if(r.link){
-      a.textContent = "Abrir conteúdo";
+      a.textContent = "Abrir no visualizador";
       a.href = r.link; a.target = "_blank"; a.rel = "noopener noreferrer";
     } else {
       a.textContent = "Link indisponível";
@@ -303,14 +306,37 @@
 
   /* ================================ fluxo =============================== */
 
+  /* O acervo indexado é uma amostra, e o professor não tem como adivinhar isso.
+     Declarar o escopo na abertura evita a maior parte das recusas — ele já sabe
+     onde a Bússola enxerga antes de perguntar. O texto sai dos dados, não é
+     escrito à mão, então continua verdadeiro quando novas obras entrarem. */
+  function caixaEscopo(){
+    MOTOR.escopo().then(function(e){
+      if(!e || !e.obras) return;
+      var d = document.createElement("div");
+      d.className = "escopo";
+      d.appendChild(document.createTextNode("Hoje eu enxergo "));
+      var forte = document.createElement("b");
+      forte.textContent = e.obras + (e.obras === 1 ? " obra" : " obras")
+        + " dos Anos Iniciais";
+      d.appendChild(forte);
+      d.appendChild(document.createTextNode(
+        " — " + e.disciplinas.join(", ") + ". Fora disso eu vou te dizer que não "
+        + "encontrei, em vez de inventar."));
+      el.conversa.appendChild(d);
+      rolar();
+    }).catch(function(){});
+  }
+
   function iniciar(){
     if(estado.iniciado) return;
     estado.iniciado = true;
     if(estado.nome){
-      balao("bot", "Oi de novo, " + estado.nome + "! Sobre o que você quer pesquisar nas obras do PNLD 2027?");
-      sugestoes();
+      balao("bot", "Oi de novo, " + estado.nome + "! Sobre o que você quer pesquisar?");
+      caixaEscopo();
     } else {
       balao("bot", "Olá! Eu sou a Bússola do PNLD. Eu procuro conteúdo dentro das obras do PNLD 2027 e te levo direto à página.\n\nAntes de começar: como posso te chamar?");
+      caixaEscopo();
     }
   }
 
@@ -323,8 +349,7 @@
     if(!estado.nome){
       estado.nome = texto.replace(/[^\p{L}\p{N}\s'.-]/gu, "").slice(0, 40).trim() || "Professor(a)";
       try { localStorage.setItem("bussola_nome", estado.nome); } catch(e) {}
-      balao("bot", "Prazer, " + estado.nome + "! Me conta o que você procura — pode ser o tema da aula, um gênero textual, uma habilidade da BNCC ou uma dúvida do dia a dia.");
-      sugestoes();
+      balao("bot", "Prazer, " + estado.nome + "! Me conta o que você procura — pode ser o tema da aula, um gênero textual ou uma habilidade da BNCC.");
       return;
     }
     perguntar(texto);
@@ -338,7 +363,7 @@
     MOTOR.buscar(pergunta, estado.nome).then(function(d){
       carregando.remove();
       balao("bot", d.texto);
-      (d.resultados || []).forEach(cartao);
+      (d.resultados || []).forEach(function(r){ cartao(r, d.termos); });
       tambemEncontrei(d.tambem_encontrei, d.rotulo);
       rolar();
     }).catch(function(e){
@@ -371,6 +396,18 @@
   var MOTOR = window.BUSSOLA_ESTATICO
     ? window.BUSSOLA_ESTATICO
     : {
+        escopo: function(){
+          return fetch("/api/catalogo").then(function(r){ return r.json(); })
+            .then(function(d){
+              var vistos = {}, disciplinas = [];
+              (d.obras || []).forEach(function(o){
+                if(o.disciplina && !vistos[o.disciplina]){
+                  vistos[o.disciplina] = 1; disciplinas.push(o.disciplina);
+                }
+              });
+              return { obras: (d.obras || []).length, disciplinas: disciplinas };
+            });
+        },
         buscar: function(pergunta, nome){
           return fetch("/api/busca", {
             method: "POST",

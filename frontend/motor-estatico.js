@@ -81,6 +81,28 @@ window.BUSSOLA_ESTATICO = (function(){
     return null;
   }
 
+  var EXPRESSOES_FILTRO = [
+    /\b[1-5]\s*(?:o|a)?\s*(?:ano|serie)\b/g,
+    /\b(?:volume|vol)\s*[1-5]\b/g,
+    /\b(primeiro|segundo|terceiro|quarto|quinto)\s+(?:ano|serie)\b/g
+  ];
+
+  /* Tira da pergunta o que já virou filtro de metadado: o ano lido como filtro
+     não pode competir de novo como termo de busca, senão puxa páginas que só
+     dizem "ano" e ainda aparece realçado no lugar do assunto. */
+  function removerTermosDeFiltro(pergunta){
+    var limpo = norm(pergunta), i;
+    for(i = 0; i < EXPRESSOES_FILTRO.length; i++) limpo = limpo.replace(EXPRESSOES_FILTRO[i], " ");
+    for(i = 0; i < COLECOES.length; i++) limpo = limpo.replace(new RegExp("\\b" + COLECOES[i][0] + "\\b", "g"), " ");
+    for(i = 0; i < DISCIPLINAS.length; i++) limpo = limpo.replace(new RegExp("\\b" + DISCIPLINAS[i][0] + "\\b", "g"), " ");
+    return limpo;
+  }
+
+  function tokensDaPergunta(pergunta){
+    var t = tokenizar(removerTermosDeFiltro(pergunta));
+    return t.length ? t : tokenizar(pergunta);
+  }
+
   function filtrosDa(pergunta){
     return {
       colecao: achar(COLECOES, pergunta),
@@ -128,6 +150,7 @@ window.BUSSOLA_ESTATICO = (function(){
   /* ---------------------------- índice BM25 ----------------------------- */
 
   var K1 = 1.5, B = 0.75, indice = null;
+  var PESO_ANCORAGEM = 0.6;   // o quanto conter os termos da pergunta promove um trecho
 
   function construirIndice(){
     var docs = D.trechos, N = docs.length, i, j, t;
@@ -210,7 +233,7 @@ window.BUSSOLA_ESTATICO = (function(){
   }
 
   function recortar(texto, pergunta, limite){
-    limite = limite || 260;
+    limite = limite || 165;
     if(texto.length <= limite) return texto;
     var termos = {}, toks = tokenizar(pergunta), i;
     for(i = 0; i < toks.length; i++) termos[toks[i]] = 1;
@@ -237,9 +260,10 @@ window.BUSSOLA_ESTATICO = (function(){
   }
 
   function descreverPagina(t, obra){
-    var visualizador = obra[4] ? " do visualizador" : " do PDF";
-    if(t[2]) return "página " + t[2] + " (página " + t[1] + visualizador + ")";
-    return "página " + t[1] + visualizador;
+    // o número que o professor procura no livro vem primeiro; o do leitor é nota
+    var onde = obra[4] ? "visualizador" : "PDF";
+    if(t[2]) return "Página " + t[2] + " do livro · " + t[1] + " no " + onde;
+    return "Página " + t[1] + " do " + onde;
   }
 
   function montarResultado(idxTrecho, pergunta, cob){
@@ -358,6 +382,7 @@ window.BUSSOLA_ESTATICO = (function(){
     }
     return {
       texto: abertura,
+      termos: tokens,
       resultados: principais,
       tambem_encontrei: ancorados.slice(3),
       rotulo: null,
@@ -371,7 +396,7 @@ window.BUSSOLA_ESTATICO = (function(){
     return new Promise(function(resolve){
       // deixa o "digitando…" pintar antes do primeiro cálculo, que monta o índice
       setTimeout(function(){
-        var filtros = filtrosDa(pergunta), tokens = tokenizar(pergunta);
+        var filtros = filtrosDa(pergunta), tokens = tokensDaPergunta(pergunta);
         var escolhidos, resultados;
 
         // 1. pergunta sobre a coleção inteira: panorama curado
@@ -404,20 +429,33 @@ window.BUSSOLA_ESTATICO = (function(){
           resolve(montarResposta(pergunta, nome, filtros, [], tokens));
           return;
         }
-        var candidatos = [];
+        // a cobertura ordena, não só decide confiança: uma página que contém o
+        // que foi perguntado é melhor resposta que uma que só se parece
+        var candidatos = [], cobs = {};
         for(var i = 0; i < pontos.length; i++){
           if(pontos[i] <= 0) continue;
-          candidatos.push([pontos[i] * fatorMetadado(D.obras[D.trechos[i][0]], filtros), i]);
+          var cob = cobertura(tokens, tokenizar(D.trechos[i][3]));
+          cobs[i] = cob;
+          candidatos.push([pontos[i] * fatorMetadado(D.obras[D.trechos[i][0]], filtros)
+                           * (1 + PESO_ANCORAGEM * cob), i]);
         }
         candidatos.sort(function(a, b){ return b[0] - a[0]; });
         escolhidos = diversificar(candidatos.slice(0, 200), 3, 3);
         resultados = escolhidos.map(function(p){
-          return montarResultado(p[1], pergunta, cobertura(tokens, tokenizar(D.trechos[p[1]][3])));
+          return montarResultado(p[1], pergunta, cobs[p[1]] || 0);
         });
         resolve(montarResposta(pergunta, nome, filtros, resultados, tokens));
       }, 220);
     });
   }
 
-  return { buscar: buscar };
+  function escopo(){
+    var vistos = {}, disciplinas = [];
+    D.obras.forEach(function(o){
+      if(o[2] && !vistos[o[2]]){ vistos[o[2]] = 1; disciplinas.push(o[2]); }
+    });
+    return Promise.resolve({ obras: D.obras.length, disciplinas: disciplinas });
+  }
+
+  return { buscar: buscar, escopo: escopo };
 })();

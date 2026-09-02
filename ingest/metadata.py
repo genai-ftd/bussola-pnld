@@ -104,6 +104,31 @@ def parse_obra(title: str, filename: str = "") -> dict:
     }
 
 
+_EXPRESSOES_FILTRO = [
+    r"\b[1-5]\s*(?:o|a)?\s*(?:ano|serie)\b",
+    r"\b(?:volume|vol)\s*[1-5]\b",
+    r"\b(?:primeiro|segundo|terceiro|quarto|quinto)\s+(?:ano|serie)\b",
+]
+
+
+def remover_termos_de_filtro(pergunta: str) -> str:
+    """Tira da pergunta o que já virou filtro de metadado.
+
+    "atividades com cantigas no 1º ano" tem o ano lido como filtro de obra. Se
+    "ano" seguisse valendo como termo de busca, ele competiria duas vezes: puxaria
+    para o topo páginas que só falam "ano", entraria no cálculo de cobertura e
+    ainda apareceria realçado na citação no lugar de "cantigas".
+    """
+    limpo = norm(pergunta)
+    for expressao in _EXPRESSOES_FILTRO:
+        limpo = re.sub(expressao, " ", limpo)
+    for chave, _ in COLECOES.items():
+        limpo = re.sub(r"\b" + re.escape(chave) + r"\b", " ", limpo)
+    for chave, _ in DISCIPLINAS:
+        limpo = re.sub(r"\b" + re.escape(chave) + r"\b", " ", limpo)
+    return limpo
+
+
 def parse_pergunta(pergunta: str) -> dict:
     """Filtros implícitos na pergunta do professor (sem LLM)."""
     return {
@@ -111,3 +136,22 @@ def parse_pergunta(pergunta: str) -> dict:
         "disciplina": detect_disciplina(pergunta),
         "ano": detect_ano(pergunta),
     }
+
+
+# --- apresentação ------------------------------------------------------------
+
+_PREFIXOS = re.compile(
+    r"^\s*PNLD\s*20\d\d\s*(?:-\s*)?(?:EFAI|Anos\s+Inicia(?:is|s))?\s*-\s*",
+    re.I)
+
+
+def titulo_curto(titulo: str) -> str:
+    """Tira o prefixo que se repete em toda obra do acervo.
+
+    "PNLD 2027 Anos Iniciais - Plantar - Arte - Volume 1" vira
+    "Plantar - Arte - Volume 1". Numa lista de três cartões, o prefixo ocupava a
+    primeira linha de todos e não distinguia nada — a coleção e o componente já
+    aparecem nas etiquetas.
+    """
+    curto = _PREFIXOS.sub("", titulo or "").strip(" -")
+    return curto or (titulo or "")

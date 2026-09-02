@@ -94,15 +94,14 @@ def _descrever_obra(r):
 
 
 def _descrever_pagina(r):
-    if not r.get("offset_confiavel"):
-        if r.get("pagina_impressa"):
-            return "página {} (página {} do PDF)".format(
-                r["pagina_impressa"], r["pagina_fisica"])
-        return "página {} do PDF".format(r["pagina_fisica"])
+    """O número que o professor procura no livro vem primeiro; o do leitor é
+    encanamento e fica como nota."""
+    onde = "visualizador" if r.get("offset_confiavel") else "PDF"
+    destino = r["pagina_issuu"] if r.get("offset_confiavel") else r["pagina_fisica"]
     if r.get("pagina_impressa"):
-        return "página {} (página {} do visualizador)".format(
-            r["pagina_impressa"], r["pagina_issuu"])
-    return "página {} do visualizador".format(r["pagina_issuu"])
+        return "Página {} do livro · {} no {}".format(
+            r["pagina_impressa"], destino, onde)
+    return "Página {} do {}".format(destino, onde)
 
 
 def _descrever_filtros(filtros):
@@ -189,6 +188,7 @@ def montar_resposta(resultado, nome=None, acervo_vazio=False, guiada=None):
 
     return {
         "texto": texto,
+        "termos": resultado.get("termos", []),
         "resultados": [_cartao(r) for r in principais],
         "tambem_encontrei": [_cartao(r) for r in resultado.get("tambem_encontrei", [])],
         "rotulo": None,

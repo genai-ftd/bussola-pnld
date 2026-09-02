@@ -20,6 +20,7 @@ from api.confianca import LIMIAR_ALTO, LIMIAR_BAIXO
 from api import responder
 from api.guiadas import GUIADAS
 from api.search import Buscador
+from ingest.metadata import titulo_curto
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIR_FRONT = os.path.join(RAIZ, "frontend")
@@ -68,7 +69,8 @@ def exportar_dados(b):
         # sem offset confirmado não publicamos link, igual ao motor local
         destino = (o["issuu"]["public_location"]
                    if o["issuu"].get("offset_pagina") is not None else "")
-        obras.append([o["titulo"], o["colecao"], o["disciplina"], o["ano"], destino])
+        obras.append([titulo_curto(o["titulo"]), o["colecao"], o["disciplina"],
+                      o["ano"], destino])
 
     trechos, mapa = [], {}
     for i, c in enumerate(b.chunks):

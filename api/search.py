@@ -17,7 +17,8 @@ import numpy as np
 
 from api import confianca
 from api.confianca import cobertura, faixa, termos_ausentes
-from ingest.metadata import norm, parse_pergunta
+from ingest.metadata import (norm, parse_pergunta, remover_termos_de_filtro,
+                             titulo_curto)
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIR_INDICE = os.path.join(RAIZ, "data", "index")
@@ -25,7 +26,13 @@ CATALOGO = os.path.join(RAIZ, "data", "catalog.json")
 
 K_RRF = 60          # constante padrão do Reciprocal Rank Fusion
 POOL = 120          # quantos candidatos cada estratégia contribui
-PESO_DENSO = 0.06   # desempate: deixa uma similaridade muito maior superar o ranking
+# Desempate pela similaridade densa. Tem de ser pequeno FRENTE ao RRF, senão
+# deixa de desempatar e passa a mandar: as pontuações do RRF vão de 1/60 a
+# 1/180, um intervalo de ~0,011, e um peso de 0,06 sobre uma similaridade de
+# 0,3–0,8 contribuía de 0,018 a 0,048 — mais que o intervalo inteiro. O efeito
+# era a busca ignorar o BM25 mesmo quando ele achava a página exata.
+PESO_DENSO = 0.25 / K_RRF   # ~0,004: um quarto de uma posição no ranking
+PESO_ANCORAGEM = 0.6        # o quanto conter os termos da pergunta promove um trecho
 REPETICOES_BOILERPLATE = 3  # texto que se repete N vezes na obra é paratexto
 
 STOPWORDS = set("""
@@ -129,7 +136,10 @@ class Buscador:
 
         from sentence_transformers import SentenceTransformer
         self.modelo = SentenceTransformer(modelo_nome or self.manifest["modelo"])
-        self.bm25 = IndiceBM25([tokenizar(c["texto"]) for c in self.chunks])
+        # tokenizar 4.358 trechos custa caro; fazemos uma vez e guardamos, para
+        # o BM25 e para o cálculo de cobertura usarem a mesma lista
+        self.tokens_chunk = [tokenizar(c["texto"]) for c in self.chunks]
+        self.bm25 = IndiceBM25(self.tokens_chunk)
         self.repeticoes = self._contar_repeticoes()
         self.obras_indexadas = len({c["obra_id"] for c in self.chunks}) or 1
 
@@ -193,20 +203,30 @@ class Buscador:
         else:
             top_denso = np.argsort(-similaridades)
 
-        tokens = tokenizar(pergunta)
+        # o que já virou filtro não compete de novo como termo de busca;
+        # se sobrar nada ("língua portuguesa" inteira é filtro), volta ao original
+        tokens = tokenizar(remover_termos_de_filtro(pergunta)) or tokenizar(pergunta)
         top_lexico = self.bm25.top(tokens, POOL) if tokens else []
 
         fundido = _rrf(list(top_denso))
         for idx, valor in _rrf(list(top_lexico)).items():
             fundido[idx] = fundido.get(idx, 0.0) + valor
 
+        # A cobertura lexical não serve só para decidir se respondemos: uma página
+        # que contém o que foi perguntado é melhor resposta que uma que só se
+        # parece com a pergunta no espaço vetorial. Sem isto a busca achava a
+        # página exata pelo BM25 e a descartava na hora de ordenar.
+        self._cobertura_cache = {}
         classificados = []
         for idx, base in fundido.items():
             chunk = self.chunks[idx]
             obra = self.catalogo.get(chunk["obra_id"], {})
+            cob = cobertura(tokens, self.tokens_chunk[idx], self.bm25.df, self.bm25.n)
+            self._cobertura_cache[idx] = cob
             pontuacao = (base + PESO_DENSO * max(float(similaridades[idx]), 0.0)) \
                 * self._fator_metadado(obra, filtros) \
-                * self._fator_paratexto(idx, chunk)
+                * self._fator_paratexto(idx, chunk) \
+                * (1.0 + PESO_ANCORAGEM * cob)
             classificados.append((pontuacao, idx))
         classificados.sort(reverse=True)
 
@@ -233,6 +253,7 @@ class Buscador:
             # para mostrar assunto vizinho SEM apresentá-lo como resposta
             "vizinhos": [] if ancorados else selecionados[:3],
             "termos_ausentes": termos_ausentes(tokens, self.bm25.df),
+            "termos": tokens,
         }
 
     @staticmethod
@@ -316,7 +337,7 @@ class Buscador:
         return {
             "chunk_idx": int(idx),
             "obra_id": chunk["obra_id"],
-            "titulo": obra.get("titulo", chunk["obra_id"]),
+            "titulo": titulo_curto(obra.get("titulo", chunk["obra_id"])),
             "colecao": obra.get("colecao"),
             "disciplina": obra.get("disciplina"),
             "ano": obra.get("ano"),
@@ -328,15 +349,14 @@ class Buscador:
             "link": link,
             "similaridade": round(float(similaridade), 4),
             "pontuacao": round(float(pontuacao), 6),
-            "cobertura": round(cobertura(tokenizar(pergunta), tokenizar(chunk["texto"]),
-                                         self.bm25.df, self.bm25.n), 4),
+            "cobertura": round(self._cobertura_cache.get(idx, 0.0), 4),
         }
 
 
 _FRASES = re.compile(r"(?<=[.!?])\s+")
 
 
-def recortar(texto: str, pergunta: str, limite: int = 260) -> str:
+def recortar(texto: str, pergunta: str, limite: int = 165) -> str:
     """Escolhe a janela do trecho com maior sobreposição de termos da pergunta.
 
     Determinístico: contagem de termos, sem geração de texto.
