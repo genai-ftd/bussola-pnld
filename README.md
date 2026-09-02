@@ -132,6 +132,13 @@ qualidade real de recuperação, use a versão local.
 O fundo é o print do portal `pnld.ftd.com.br`, embutido como data URI a partir de
 `frontend/assets/portal-pnld.jpg`.
 
+### GitHub Pages
+
+O build também escreve `docs/index.html` (com `.nojekyll`), que é o que o Pages serve.
+Para ligar: **Settings → Pages → Source: Deploy from a branch → `main` / `/docs`**.
+Depois de cada `build_static_demo.py`, commite `docs/` e dê push — o Pages republica
+sozinho em cerca de um minuto.
+
 ---
 
 ## Limitações conhecidas
