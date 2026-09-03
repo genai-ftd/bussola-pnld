@@ -18,7 +18,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
 
-from api.confianca import LIMIAR_ALTO, LIMIAR_BAIXO
+from api.confianca import LIMIAR_ALTO, LIMIAR_BAIXO, PESO_DISCIPLINA
+from api.disciplinas import DOMINIO_MINIMO
 from api import responder
 from api.guiadas import GUIADAS
 from api.search import Buscador
@@ -76,8 +77,8 @@ def exportar_dados(b):
 
     trechos, mapa = [], {}
     for i, c in enumerate(b.chunks):
-        if b.repeticoes[i] >= 3 or c["pagina_fisica"] <= 2:
-            continue          # paratexto e capa nunca são resposta útil
+        if b.repeticoes[i] >= 3 or c["pagina_fisica"] <= 2 or b.eh_listagem[i]:
+            continue          # paratexto, capa e sumário nunca são resposta útil
         mapa[i] = len(trechos)
         trechos.append([indice_obra[c["obra_id"]], c["pagina_fisica"],
                         c["pagina_impressa"] or "", c["texto"][:LIMITE_TEXTO]])
@@ -114,14 +115,38 @@ def montar_guiadas(b, mapa):
             if exportado is not None:
                 pares.append([round(r["pontuacao"], 6), exportado,
                               round(r["cobertura"], 4)])
+        # o texto vai renderizado: a página publicada não tem como contar
+        # ocorrências no acervo, então a verificação é feita aqui, no build
+        texto = g["texto"]
+        if g.get("verificar"):
+            texto = texto.replace("{verificacao}", responder.descrever_verificacao(
+                [(rotulo, b.contar_ocorrencias(padrao))
+                 for padrao, rotulo in g["verificar"]]).strip())
         saida[g["id"]] = {
             "padroes": g["padroes"],
-            "texto": g["texto"],
+            "texto": texto,
             "modo": g["modo"],
             "r": pares,
         }
         print("  guiada: {} -> {} resultados".format(g["id"], len(pares)))
     return saida
+
+
+def tabela_disciplinas(b, obras_ids):
+    """termo -> [índice da disciplina, peso do voto], medida no acervo.
+
+    Vai embutida para o motor publicado inferir a disciplina da pergunta igual
+    ao local: o professor pergunta "tabuada de multiplicação", não "matemática".
+    """
+    nomes = []
+    for oid in obras_ids:
+        d = b.catalogo[oid].get("disciplina")
+        if d and d not in nomes:
+            nomes.append(d)
+    indice = {d: i for i, d in enumerate(nomes)}
+    tabela = {t: [indice[d], round(peso, 3)]
+              for t, (d, peso) in b.tabela_disciplinas.items() if d in indice}
+    return nomes, tabela
 
 
 def frequencia_documento(b):
@@ -143,6 +168,9 @@ def main():
     print("Pré-computando o banco de perguntas com a busca semântica real…")
     banco = montar_banco(b, mapa)
 
+    nomes_disciplinas, votos_disciplina = tabela_disciplinas(b, list(b.catalogo.keys()))
+    print("  tabela de disciplinas: {} termos".format(len(votos_disciplina)))
+
     print("Pré-computando as respostas guiadas…")
     guiadas = montar_guiadas(b, mapa)
 
@@ -152,6 +180,10 @@ def main():
         "banco": banco,
         "guiadas": guiadas,
         "df": frequencia_documento(b),
+        "disciplinas": nomes_disciplinas,
+        "voto_disciplina": votos_disciplina,
+        "dominio_disciplina": DOMINIO_MINIMO,
+        "peso_disciplina": PESO_DISCIPLINA,
         "n": len(b.chunks),
         "limiares": {"alto": LIMIAR_ALTO, "baixo": LIMIAR_BAIXO},
         # a copy mora em api/responder.py e vem embutida daqui: uma fonte só,

@@ -51,7 +51,6 @@ DENTRO = [
     # componentes que entraram com as oito obras novas
     "como ensinar a tabuada de multiplicação",
     "atividades sobre o sistema solar",
-    "fotossíntese e as plantas",
     "dia da consciência negra",
     "trabalho com mapas e cartografia",
     "atividades sobre passado presente e memória",
@@ -68,6 +67,8 @@ FORA = [
     "Páscoa",
     "atividades sobre a Páscoa",
     "como trabalhar a Páscoa em sala de aula",
+    # a palavra só aparece num sumário; conteúdo mesmo não existe
+    "fotossíntese e as plantas",
     "programação em python",
     "campeonato brasileiro de futebol",
     "como a coleção trata turmas multisseriadas",

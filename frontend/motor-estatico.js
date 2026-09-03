@@ -162,7 +162,28 @@ window.BUSSOLA_ESTATICO = (function(){
      que distingue composto de coincidência: "sistema solar" não existe em
      nenhuma página, mas "solar" existe — em "filtro solar". Sem o par, a
      pergunta sobre astronomia casava com protetor solar. */
-  function unidadesDaPergunta(tokens, colados){
+  /* Disciplina provável da pergunta, votada pelos termos. A tabela vem do
+     acervo (ver api/disciplinas.py): o professor pergunta "tabuada de
+     multiplicação", não "matemática", e sem esse sinal a busca acerta o tema e
+     erra a obra. */
+  function inferirDisciplina(tokens){
+    if(!D.voto_disciplina) return null;
+    var votos = {}, vistos = {}, total = 0, i;
+    for(i = 0; i < tokens.length; i++){
+      if(vistos[tokens[i]]) continue;
+      vistos[tokens[i]] = 1;
+      var e = D.voto_disciplina[tokens[i]];
+      if(!e) continue;
+      var nome = D.disciplinas[e[0]];
+      votos[nome] = (votos[nome] || 0) + e[1];
+      total += e[1];
+    }
+    var lider = null, peso = 0;
+    for(var k in votos) if(votos[k] > peso){ peso = votos[k]; lider = k; }
+    return (lider && peso / total >= D.dominio_disciplina) ? lider : null;
+  }
+
+  function unidadesDaPergunta(tokens, colados, disciplina){
     var vistos = {}, saida = [], i;
     for(i = 0; i < tokens.length; i++){
       if(vistos[tokens[i]]) continue;
@@ -176,10 +197,18 @@ window.BUSSOLA_ESTATICO = (function(){
       saida.push([tokens[i], tokens[i + 1],
                   Math.log(1 + (D.n - df + 0.5) / (df + 0.5))]);
     }
+    // meia unidade para a disciplina: orienta a escolha da obra sem inflar,
+    // porque qualquer página do componente já a satisfaz
+    if(disciplina && saida.length){
+      var soma = 0;
+      for(i = 0; i < saida.length; i++) soma += saida[i][2];
+      saida.push(["__disciplina__", disciplina,
+                  (soma / saida.length) * D.peso_disciplina]);
+    }
     return saida;
   }
 
-  function cobertura(unidades, tokensTrecho){
+  function cobertura(unidades, tokensTrecho, disciplinaTrecho){
     if(!unidades.length) return 0;
     var presentes = {}, pares = {}, i;
     for(i = 0; i < tokensTrecho.length; i++) presentes[tokensTrecho[i]] = 1;
@@ -188,17 +217,24 @@ window.BUSSOLA_ESTATICO = (function(){
     for(i = 0; i < unidades.length; i++){
       var u = unidades[i];
       total += u[2];
-      var achou = u[1] === null ? presentes[u[0]] : pares[u[0] + "\u0000" + u[1]];
+      var achou;
+      if(u[0] === "__disciplina__") achou = (disciplinaTrecho === u[1]);
+      else if(u[1] === null) achou = presentes[u[0]];
+      else achou = pares[u[0] + "\u0000" + u[1]];
       if(achou) obtido += u[2];
     }
     return total > 0 ? obtido / total : 0;
   }
 
+  /* Ausência é apurada sobre os trechos publicados, que já excluem sumários:
+     um termo que só existe num índice não conta como presente na hora de dizer
+     ao professor o que faltou. */
   function termosAusentes(tokens){
+    if(!indice) construirIndice();
     var saida = [], vistos = {};
     for(var i = 0; i < tokens.length; i++){
       var t = tokens[i];
-      if(!vistos[t] && !(D.df[t] > 0)){ vistos[t] = 1; saida.push(t); }
+      if(!vistos[t] && !(indice.df[t] > 0)){ vistos[t] = 1; saida.push(t); }
     }
     return saida;
   }
@@ -242,7 +278,7 @@ window.BUSSOLA_ESTATICO = (function(){
         (postings[t] || (postings[t] = [])).push([d, peso * f * (K1 + 1) / (f + K1 * norma)]);
       }
     }
-    indice = { postings: postings, n: N, tokens: tokensPorDoc };
+    indice = { postings: postings, n: N, tokens: tokensPorDoc, df: dfLocal };
   }
 
   var memoFrase = {};
@@ -420,12 +456,22 @@ window.BUSSOLA_ESTATICO = (function(){
     });
   }
 
+  /* O que o professor escreveu e o que a ferramenta deduziu não podem sair com
+     a mesma frase: quando o palpite erra, ele precisa perceber que a restrição
+     foi decisão nossa, para poder desfazê-la. */
   function descreverFiltros(f){
-    var d = [];
-    if(f.ano) d.push(f.ano + "º ano");
-    if(f.disciplina) d.push(f.disciplina);
-    if(f.colecao) d.push("coleção " + f.colecao);
-    return d.length ? " Priorizei o que é de " + d.join(" · ") + "." : "";
+    var pedidos = [];
+    if(f.ano) pedidos.push(f.ano + "º ano");
+    if(f.colecao) pedidos.push("coleção " + f.colecao);
+    if(f.disciplina && !f.disciplina_inferida) pedidos.push(f.disciplina);
+
+    var frases = "";
+    if(pedidos.length) frases += " Priorizei o que é de " + pedidos.join(" · ") + ".";
+    if(f.disciplina && f.disciplina_inferida){
+      frases += " Entendi como pergunta de " + f.disciplina
+              + "; se não for, me diz o componente.";
+    }
+    return frases;
   }
 
   function montarResposta(pergunta, nome, filtros, resultados, tokens, assunto){
@@ -433,11 +479,16 @@ window.BUSSOLA_ESTATICO = (function(){
     var melhor = 0, i;
     for(i = 0; i < resultados.length; i++) melhor = Math.max(melhor, resultados[i].cobertura);
 
-    var ancorados = resultados.filter(function(r){ return r.cobertura >= BAIXO; });
+    var ausentes = termosAusentes(tokens);
+    // Termo com frequência zero é evidência decisiva, não indício: se a palavra
+    // central da pergunta não existe em nenhuma página publicada, não há o que
+    // responder — nem com ressalva.
+    var ancorados = ausentes.length
+      ? []
+      : resultados.filter(function(r){ return r.cobertura >= BAIXO; });
 
-    // nada ancorado no acervo: dizer que não sabe, e dizer o que faltou
     if(!ancorados.length){
-      var ausentes = termosAusentes(tokens), texto;
+      var texto;
       if(ausentes.length){
         var token = ausentes.reduce(function(a, b){ return b.length > a.length ? b : a; });
         texto = preencher(escolher(D.copy.sem_termo, pergunta),
@@ -531,11 +582,15 @@ window.BUSSOLA_ESTATICO = (function(){
         }
         // a cobertura julga a pergunta inteira, inclusive o que virou filtro
         var comAdj = tokenizarAdjacentes(assunto);
-        var unids = unidadesDaPergunta(comAdj.tokens, comAdj.colados);
+        if(!filtros.disciplina){
+          var inferida = inferirDisciplina(tokens);
+          if(inferida){ filtros.disciplina = inferida; filtros.disciplina_inferida = true; }
+        }
+        var unids = unidadesDaPergunta(comAdj.tokens, comAdj.colados, filtros.disciplina);
         var candidatos = [], cobs = {};
         for(var chave in elegivel){
           var d = +chave;
-          var cob = cobertura(unids, indice.tokens[d]);
+          var cob = cobertura(unids, indice.tokens[d], D.obras[D.trechos[d][0]][2]);
           cobs[d] = cob;
           candidatos.push([elegivel[d] * fatorMetadado(D.obras[D.trechos[d][0]], filtros), d]);
         }
@@ -547,7 +602,7 @@ window.BUSSOLA_ESTATICO = (function(){
         // aparece nos dois canais somava RRF em dobro e vencia mesmo contendo
         // um terço do que foi perguntado
         candidatos.sort(function(a, b){
-          var ca = Math.round((cobs[a[1]] || 0) * 10), cb = Math.round((cobs[b[1]] || 0) * 10);
+          var ca = Math.round((cobs[a[1]] || 0) * 20), cb = Math.round((cobs[b[1]] || 0) * 20);
           return cb !== ca ? cb - ca : b[0] - a[0];
         });
         escolhidos = diversificar(candidatos.slice(0, 200), 3, 3);

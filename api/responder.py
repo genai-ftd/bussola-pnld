@@ -86,6 +86,45 @@ def termo_original(pergunta, token):
     return token
 
 
+def descrever_verificacao(verificacoes):
+    """Frase sobre o que existe ou não existe, montada da contagem no acervo.
+
+    `verificacoes` é uma lista de (rótulo, {"trechos": n, "obras": [...]}).
+    Existe para nenhuma resposta guiada precisar afirmar ausência por conta
+    própria: a frase se refaz sozinha quando o acervo muda.
+    """
+    ausentes = [rot for rot, r in verificacoes if not r["trechos"]]
+    presentes = [(rot, r) for rot, r in verificacoes if r["trechos"]]
+    partes = []
+
+    if ausentes:
+        partes.append("Não encontrei {} em nenhuma página das obras indexadas."
+                      .format(_lista_natural(ausentes)))
+
+    unicos = [(rot, r) for rot, r in presentes if r["trechos"] == 1]
+    varios = [(rot, r) for rot, r in presentes if r["trechos"] > 1]
+
+    for rotulo, r in unicos:
+        onde = r["obras"][0] if r["obras"] else "uma única página"
+        partes.append("{} aparece uma única vez em todo o acervo, em {} — menção "
+                      "de passagem, não conteúdo.".format(_maiuscula(rotulo), onde))
+    if varios:
+        itens = ["{} em {} trechos".format(rot, r["trechos"]) for rot, r in varios]
+        partes.append("{}.".format(_maiuscula(_lista_natural(itens)).replace(
+            " em ", " aparece em ", 1)))
+    return " ".join(partes)
+
+
+def _lista_natural(itens):
+    if len(itens) == 1:
+        return itens[0]
+    return ", ".join(itens[:-1]) + " e " + itens[-1]
+
+
+def _maiuscula(texto):
+    return texto[:1].upper() + texto[1:] if texto else texto
+
+
 def _descrever_obra(r):
     partes = [p for p in [r.get("colecao"), r.get("disciplina")] if p]
     if r.get("ano"):
@@ -105,16 +144,29 @@ def _descrever_pagina(r):
 
 
 def _descrever_filtros(filtros):
-    ditos = []
+    """Conta ao professor o recorte que foi aplicado — e de onde ele veio.
+
+    O que ele escreveu e o que a ferramenta deduziu não podem sair com a mesma
+    frase: quando o palpite erra, ele precisa perceber que a restrição foi
+    decisão nossa, para poder desfazê-la.
+    """
+    pedidos = []
     if filtros.get("ano"):
-        ditos.append("{}º ano".format(filtros["ano"]))
-    if filtros.get("disciplina"):
-        ditos.append(filtros["disciplina"])
+        pedidos.append("{}º ano".format(filtros["ano"]))
     if filtros.get("colecao"):
-        ditos.append("coleção {}".format(filtros["colecao"]))
-    if not ditos:
-        return ""
-    return " Priorizei o que é de {}.".format(" · ".join(ditos))
+        pedidos.append("coleção {}".format(filtros["colecao"]))
+    disciplina = filtros.get("disciplina")
+    inferida = filtros.get("disciplina_inferida")
+    if disciplina and not inferida:
+        pedidos.append(disciplina)
+
+    frases = []
+    if pedidos:
+        frases.append(" Priorizei o que é de {}.".format(" · ".join(pedidos)))
+    if disciplina and inferida:
+        frases.append(" Entendi como pergunta de {}; se não for, me diz o "
+                      "componente.".format(disciplina))
+    return "".join(frases)
 
 
 def _cartao(r):
@@ -143,12 +195,16 @@ def montar_resposta(resultado, nome=None, acervo_vazio=False, guiada=None):
 
     # 1. pergunta sobre a coleção: panorama curado + páginas onde aquilo aparece
     if guiada:
+        texto_guiado = guiada["texto"]
+        if "{verificacao}" in texto_guiado:
+            texto_guiado = texto_guiado.replace(
+                "{verificacao}", resultado.get("verificacao", "").strip())
         mostra = principais if guiada["modo"] == "responde" else []
         apoio = vizinhos or resultado.get("tambem_encontrei", [])
         if guiada["modo"] == "sem_conteudo":
             apoio = (principais + vizinhos)[:3]
         return {
-            "texto": guiada["texto"],
+            "texto": texto_guiado,
             "resultados": [_cartao(r) for r in mostra],
             "tambem_encontrei": [] if guiada["modo"] == "responde"
                                 else [_cartao(r) for r in apoio],

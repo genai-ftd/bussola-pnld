@@ -5,10 +5,12 @@ vem pro professor?") não são busca por trecho: o professor quer um panorama, e
 um cartão solto de uma página não responde. Aqui a Bússola dá o panorama e
 depois mostra as páginas onde aquilo aparece de fato.
 
-Toda afirmação abaixo foi conferida contra o texto extraído das obras indexadas.
-Onde o acervo não cobre o assunto — turmas multisseriadas é o caso — a resposta
-diz isso com todas as letras, em vez de empurrar a página mais parecida.
-Detecção por palavra-chave, determinística, sem LLM.
+Nenhum texto aqui afirma ausência por conta própria. Já afirmou, e apodreceu: a
+resposta de multisseriadas dizia que o termo não aparecia em nenhuma página, o
+acervo cresceu de 5 para 13 obras e a frase virou mentira. Agora as afirmações
+sobre o que existe ou não existe são montadas na hora, contando as ocorrências
+no acervo atual, através do campo `verificar`. Detecção por palavra-chave,
+determinística, sem LLM.
 """
 import re
 
@@ -20,8 +22,10 @@ GUIADAS = [
         "padroes": [r"habilidad\w*.*leitura", r"leitura.*habilidad\w*",
                     r"bncc.*leitura", r"leitura.*bncc",
                     r"habilidad\w*.*(previst|esperad)"],
-        "consulta": "habilidades de leitura previstas para o ano na BNCC "
-                    "quadro de distribuição de conteúdos",
+        # A consulta interna é curta de propósito: a cobertura mede quanto da
+        # pergunta um trecho contém, então consulta comprida derruba a nota por
+        # tamanho, não por falta de conteúdo.
+        "consulta": "quadro de distribuição de conteúdos habilidades BNCC",
         "modo": "responde",
         "texto": (
             "Nas obras que estão indexadas, sim. Cada volume traz um quadro de "
@@ -36,38 +40,36 @@ GUIADAS = [
     {
         "id": "multisseriadas",
         "padroes": [r"multisseriad", r"multi seriad", r"classes? multi"],
-        "consulta": "organização da sala de aula agrupamentos pequenos e grandes grupos "
-                    "atendimento a diferentes ritmos de aprendizagem",
+        "consulta": "organização da sala em pequenos e grandes grupos",
         "modo": "sem_conteudo",
+        "verificar": [("multisseriad", "o termo \"multisseriada\"")],
         "texto": (
-            "Não encontrei. O termo \"multisseriadas\" não aparece em nenhuma das "
-            "páginas das obras indexadas, então eu não tenho como te dizer como a "
-            "coleção trata isso.\n\n"
-            "O que existe é assunto vizinho, não resposta: orientações sobre organizar "
-            "a sala de formas diferentes, trabalhar em pequenos e grandes grupos e "
-            "atender ritmos distintos de aprendizagem. Deixo abaixo caso ajude — mas "
-            "prefiro te dizer que não sei a te mostrar uma página que não responde."
+            "{verificacao}\n\n"
+            "Não tenho como te dizer como a coleção trata o assunto. O que existe é "
+            "vizinho, não resposta: orientações sobre organizar a sala de formas "
+            "diferentes, trabalhar em pequenos e grandes grupos e atender ritmos "
+            "distintos de aprendizagem. Deixo abaixo caso ajude — mas prefiro te "
+            "dizer que não sei a te mostrar uma página que não responde."
         ),
     },
     {
         "id": "acessibilidade",
         "padroes": [r"acessibilidad", r"recursos?.*inclus", r"inclus\w*.*recursos?",
                     r"defici[êe]nc", r"\blibras\b", r"braile|braille", r"audiodescri"],
-        "consulta": "inclusão de estudantes com deficiência acessibilidade "
-                    "adaptações e estratégias para a sala de aula",
+        "consulta": "inclusão de estudantes com deficiência",
         "modo": "responde",
+        "verificar": [("audiodescri", "audiodescrição"), ("braile|braille", "braile"),
+                      ("\\blibras\\b", "Libras")],
         "texto": (
-            "Preciso separar duas coisas aqui, porque elas costumam se confundir.\n\n"
+            "Preciso separar duas coisas, porque elas costumam se confundir.\n\n"
             "O que eu encontro nas obras indexadas é orientação pedagógica sobre "
-            "inclusão: há uma seção \"A inclusão nas escolas\" no manual do professor, "
-            "orientações sobre adaptar atividades e referências sobre inclusão de "
-            "estudantes com deficiência intelectual. Há também atividades que tratam "
-            "acessibilidade como tema com os estudantes — rampas, piso tátil, braile, "
-            "sinais sonoros.\n\n"
-            "O que eu não encontrei foi uma lista de recursos de acessibilidade do "
-            "próprio material, do tipo audiodescrição, versão em braile ou Libras. Se "
-            "for isso que você precisa, vale confirmar direto com a editora. As "
-            "páginas sobre inclusão:"
+            "inclusão: uma seção \"A inclusão nas escolas\" no manual do professor, "
+            "orientações sobre adaptar atividades e atividades que tratam "
+            "acessibilidade como tema com os estudantes.\n\n"
+            "{verificacao} São orientações ao professor sobre como usar esses "
+            "recursos, e não uma lista do que o próprio material oferece — para saber "
+            "se a obra sai com audiodescrição ou versão em braile, vale confirmar com "
+            "a editora. As páginas sobre inclusão:"
         ),
     },
     {
@@ -75,8 +77,7 @@ GUIADAS = [
         "padroes": [r"material.*(apoio|professor)", r"apoio.*professor",
                     r"manual do professor", r"o que vem (junto|incluso|incluído)",
                     r"recursos?.*professor"],
-        "consulta": "manual do professor referências complementares estratégias de "
-                    "avaliação fundamentos teórico-metodológicos da coleção",
+        "consulta": "manual do professor referências complementares",
         "modo": "responde",
         "texto": (
             "O Manual do Professor vem no mesmo volume, na segunda parte. Ele traz os "

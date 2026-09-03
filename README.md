@@ -187,11 +187,16 @@ perguntado vence uma que só se parece com a pergunta no espaço vetorial.
 
 | | responde direto | com ressalva | recusa |
 |---|---|---|---|
-| **36 dentro do acervo** | **35** | 1 | **0** |
-| **18 fora do acervo** | 4 | 3 | 11 |
+| **35 dentro do acervo** | **33** | 2 | **0** |
+| **19 fora do acervo** | 3 | 1 | 15 |
 
 Recall de 100% nas perguntas que o acervo responde, nenhuma recusa indevida, e
-4 em 18 perguntas de fora respondidas sem aviso (22%).
+3 em 19 perguntas de fora respondidas sem aviso (16%).
+
+Além do limiar, uma regra dura: **termo com frequência zero recusa na hora**. Se
+uma palavra da pergunta não existe em nenhuma página que a busca possa devolver,
+não há o que responder — nem com ressalva. É o que separa "programação em
+python" de uma pergunta apenas difícil.
 
 O conjunto foi refeito quando o acervo cresceu: "sistema solar" e "fotossíntese",
 que eram exemplos de pergunta fora, viraram conteúdo real ao entrar Ciências.
@@ -203,25 +208,34 @@ O conjunto rotulado é pequeno e feito à mão: serve para calibrar e para pegar
 regressão, não como medida de produção. Amplie antes de decidir se o formato
 determinístico se sustenta.
 
+### Sumário não é resposta
+
+O professor que buscou "fotossíntese" era levado à página XXXVIII de Ciências, um
+quadro de conteúdos onde a palavra é item de lista. Sumários têm assinatura: não
+pontuam frase. No acervo a mediana é 1,05 ponto final por 100 caracteres, e
+abaixo de 0,30 estão 1% dos trechos — todos listagem. Eles saem da seleção
+(`_parece_listagem`) e não contam na hora de apurar o que falta.
+
 ### Limite conhecido: menção não é cobertura
 
-Os 4 erros restantes são todos a mesma coisa — **uma menção de passagem conta
-como cobertura total**:
+Os 3 erros restantes são a mesma coisa — **uma menção de passagem conta como
+cobertura total**. "regras do handebol" casa com a Arena do Futuro, citada como
+sede das Olimpíadas de 2016 numa aula de Geografia.
 
-- **"Páscoa"** casa com a página 295 do livro de Matemática, onde "28 - Páscoa"
-  aparece dentro de um calendário cheio de números. É a única ocorrência em
-  10.789 trechos, e não responde nada.
-- **"regras do handebol"** casa com a Arena do Futuro, citada como sede das
-  Olimpíadas de 2016 numa aula de Geografia.
+A cobertura mede presença, não suficiência. Distinguir os dois exigiria olhar
+frequência dentro do trecho, e isso derruba casos legítimos que também aparecem
+uma vez só. Medimos os dois lados antes de parar aqui.
 
-A cobertura mede presença, não suficiência: um termo que aparece uma vez pontua
-igual a um que dá título a um capítulo. Distinguir os dois exigiria olhar
-frequência dentro do trecho — e isso derruba casos legítimos, como "fotossíntese",
-que também aparece uma vez só e é conteúdo de verdade. Medimos os dois lados
-antes de parar aqui.
+O caminho não é mexer no limiar; é a rodada de teste dizer quais erros de fato
+incomodam o professor. É para isso que existe o registro.
 
-O caminho para resolver não é mexer no limiar; é a rodada de teste dizer quais
-erros de fato incomodam o professor. É para isso que existe o registro.
+### Afirmação sobre o acervo se refaz sozinha
+
+As respostas guiadas não afirmam ausência por conta própria. Já afirmaram: o
+texto de multisseriadas dizia que o termo não aparecia em nenhuma página, o
+acervo cresceu de 5 para 13 obras e a frase virou mentira. Agora o campo
+`verificar` conta as ocorrências no acervo atual e a frase é montada na hora
+(`descrever_verificacao`). Ao adicionar obras, esses textos se corrigem.
 
 ## Perguntas sobre a coleção
 

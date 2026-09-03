@@ -152,6 +152,11 @@ async def busca(p: Pergunta):
     # o cache guarda o resultado da consulta interna; a resposta fala da pergunta
     # que o professor escreveu
     resultado = dict(resultado, pergunta=p.pergunta)
+    if guiada and guiada.get("verificar"):
+        from api.responder import descrever_verificacao
+        resultado["verificacao"] = descrever_verificacao(
+            [(rotulo, b.contar_ocorrencias(padrao))
+             for padrao, rotulo in guiada["verificar"]])
     resposta = montar_resposta(resultado, p.nome, guiada=guiada)
     ms = int((time.time() - inicio) * 1000)
     registrar(p.pergunta, p.nome, resultado, resposta, ms)

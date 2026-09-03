@@ -16,6 +16,7 @@ import re
 import numpy as np
 
 from api import confianca
+from api import disciplinas as mod_disciplinas
 from api.confianca import cobertura, termos_ausentes, unidades
 from ingest.metadata import (extrair_assunto, norm, parse_pergunta,
                              remover_termos_de_filtro, titulo_curto)
@@ -34,6 +35,11 @@ POOL = 120          # quantos candidatos cada estratégia contribui
 PESO_DENSO = 0.25 / K_RRF   # ~0,004: um quarto de uma posição no ranking
 PESO_ANCORAGEM = 0.6        # o quanto conter os termos da pergunta promove um trecho
 REPETICOES_BOILERPLATE = 3  # texto que se repete N vezes na obra é paratexto
+# Sumários e quadros de conteúdo listam títulos sem pontuar frase nenhuma. No
+# acervo a mediana é 1,05 ponto final por 100 caracteres; abaixo de 0,30 estão
+# 1% dos trechos, e todos são listagem. Elas nunca são resposta: o professor
+# que buscou "fotossíntese" caía numa página onde a palavra é item de índice.
+DENSIDADE_MINIMA_DE_FRASE = 0.30
 
 STOPWORDS = set("""
 a as o os um uma uns umas de do da dos das em no na nos nas por para pelo pela com sem sobre
@@ -160,7 +166,23 @@ class Buscador:
         self.tokens_chunk = [tokenizar(c["texto"]) for c in self.chunks]
         self.bm25 = IndiceBM25(self.tokens_chunk)
         self.repeticoes = self._contar_repeticoes()
+        self.eh_listagem = [self._parece_listagem(c["texto"]) for c in self.chunks]
         self._memo_bigrama = {}
+        # df apurado só sobre os trechos que a busca pode devolver: um termo que
+        # existe apenas num sumário não deve contar como presente na hora de
+        # dizer ao professor o que faltou
+        self.df_conteudo = {}
+        for tokens, listagem in zip(self.tokens_chunk, self.eh_listagem):
+            if listagem:
+                continue
+            for termo in set(tokens):
+                self.df_conteudo[termo] = self.df_conteudo.get(termo, 0) + 1
+        self.disciplina_chunk = [
+            (self.catalogo.get(c["obra_id"], {}) or {}).get("disciplina")
+            for c in self.chunks]
+        # tabela termo -> disciplina, medida no próprio acervo (ver disciplinas.py)
+        self.tabela_disciplinas = mod_disciplinas.construir_tabela(
+            self.tokens_chunk, self.disciplina_chunk)
         self.obras_indexadas = len({c["obra_id"] for c in self.chunks}) or 1
 
     # ------------------------------------------------------------------ carga
@@ -176,6 +198,14 @@ class Buscador:
             raise RuntimeError("índice não encontrado. Rode `python ingest/build_index.py`.")
         with open(caminho, encoding="utf-8") as fh:
             return [json.loads(linha) for linha in fh if linha.strip()]
+
+    @staticmethod
+    def _parece_listagem(texto):
+        """Sumário, quadro de conteúdos, índice: títulos enfileirados sem frase."""
+        if len(texto) < 200:
+            return False
+        pontos = len(re.findall(r"[.!?]", texto))
+        return pontos / (len(texto) / 100.0) < DENSIDADE_MINIMA_DE_FRASE
 
     def _contar_repeticoes(self):
         """Quantas vezes cada texto se repete dentro da mesma obra.
@@ -206,6 +236,26 @@ class Buscador:
                         break
             self._memo_bigrama[chave] = achados
         return self._memo_bigrama[chave]
+
+    def contar_ocorrencias(self, padrao):
+        """Em quantos trechos (fora sumários) o padrão aparece, e onde.
+
+        Serve para as respostas guiadas afirmarem sobre o acervo de hoje. Texto
+        curado que diz "não aparece em nenhuma página" apodrece na primeira obra
+        nova — foi o que aconteceu com "multisseriadas".
+        """
+        regex = re.compile(padrao, re.I)
+        trechos, obras = 0, []
+        for chunk, listagem in zip(self.chunks, self.eh_listagem):
+            if listagem or not regex.search(chunk["texto"]):
+                continue
+            trechos += 1
+            obra = self.catalogo.get(chunk["obra_id"], {})
+            rotulo = "{} (página {})".format(
+                titulo_curto(obra.get("titulo", "")), chunk["pagina_fisica"])
+            if rotulo not in obras:
+                obras.append(rotulo)
+        return {"trechos": trechos, "obras": obras}
 
     def df_bigrama(self, a, b):
         return len(self.trechos_com_frase(a, b))
@@ -276,14 +326,22 @@ class Buscador:
         # gente afirmar que encontrou. O filtro decide ranking, não dispensa a
         # palavra de aparecer.
         tokens_cobertura, colados = tokenizar_adjacentes(assunto)
+        # o professor raramente nomeia o componente; quando não nomeia, o acervo
+        # diz de qual disciplina o assunto é
+        if not filtros.get("disciplina"):
+            inferida = mod_disciplinas.inferir(tokens, self.tabela_disciplinas)
+            if inferida:
+                filtros = dict(filtros, disciplina=inferida, disciplina_inferida=True)
         unidades_pergunta = unidades(tokens_cobertura, colados, self.bm25.df,
-                                     self.bm25.n, self.df_bigrama)
+                                     self.bm25.n, self.df_bigrama,
+                                     disciplina=filtros.get("disciplina"))
         self._cobertura_cache = {}
         classificados = []
         for idx, base in fundido.items():
             chunk = self.chunks[idx]
             obra = self.catalogo.get(chunk["obra_id"], {})
-            cob = cobertura(unidades_pergunta, self.tokens_chunk[idx])
+            cob = cobertura(unidades_pergunta, self.tokens_chunk[idx],
+                            self.disciplina_chunk[idx])
             self._cobertura_cache[idx] = cob
             pontuacao = (base + PESO_DENSO * max(float(similaridades[idx]), 0.0)) \
                 * self._fator_metadado(obra, filtros) \
@@ -296,8 +354,11 @@ class Buscador:
         # a página com "Fotossíntese" e cobertura 1,0, primeira do BM25, estava
         # sendo descartada em favor de páginas com 0,31. Arredondar a cobertura
         # evita que diferenças de ruído atropelem o ranking de relevância.
+        # Faixas de 0,05: mais grosso que isso, uma diferença real de cobertura
+        # (0,67 contra 0,74, que é o que separa a obra certa da errada) cai na
+        # mesma faixa e a pontuação de recuperação decide sozinha.
         classificados.sort(
-            key=lambda par: (round(self._cobertura_cache[par[1]], 1), par[0]),
+            key=lambda par: (round(self._cobertura_cache[par[1]] * 20), par[0]),
             reverse=True)
 
         selecionados = self._diversificar(classificados, similaridades, pergunta,
@@ -310,6 +371,13 @@ class Buscador:
         melhor = max([r["cobertura"] for r in selecionados], default=0.0)
         confianca_faixa = ("alta" if melhor >= alto
                            else "parcial" if melhor >= baixo else "nenhuma")
+
+        # Termo com frequência zero é evidência decisiva, não indício: se a
+        # palavra central da pergunta não existe em nenhuma página que a busca
+        # possa devolver, não há o que responder — nem com ressalva.
+        ausentes = termos_ausentes(tokens_cobertura, self.df_conteudo)
+        if ausentes:
+            confianca_faixa = "nenhuma"
         ancorados = [r for r in selecionados if r["cobertura"] >= baixo]
         return {
             "pergunta": pergunta,
@@ -318,12 +386,12 @@ class Buscador:
             "confianca": confianca_faixa,
             "cobertura": round(melhor, 4),
             "confiante": confianca_faixa != "nenhuma",
-            "principais": ancorados[:principais] if ancorados else [],
+            "principais": [] if confianca_faixa == "nenhuma" else ancorados[:principais],
             "tambem_encontrei": ancorados[principais:principais + extras],
             # o que existe de mais próximo quando nada passa na ancoragem: serve
             # para mostrar assunto vizinho SEM apresentá-lo como resposta
-            "vizinhos": [] if ancorados else selecionados[:3],
-            "termos_ausentes": termos_ausentes(tokens_cobertura, self.bm25.df),
+            "vizinhos": selecionados[:3] if confianca_faixa == "nenhuma" else [],
+            "termos_ausentes": ausentes,
             "termos": tokens,
         }
 
@@ -349,6 +417,8 @@ class Buscador:
 
         for pontuacao, idx in classificados:
             chunk = self.chunks[idx]
+            if self.eh_listagem[idx]:
+                continue          # sumário não responde nada; ver _parece_listagem
             chave = (chunk["obra_id"], chunk["pagina_fisica"])
             if chave in vistos_pagina:
                 continue

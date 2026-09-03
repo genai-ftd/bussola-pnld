@@ -37,7 +37,16 @@ def idf(frequencia_documento: int, total_documentos: int) -> float:
                     / (frequencia_documento + 0.5))
 
 
-def unidades(tokens, colados, df, total_documentos, df_bigrama):
+UNIDADE_DISCIPLINA = "__disciplina__"
+# Varrido no harness contra os dois critérios. Em 1,0 a disciplina manda o
+# bastante para "tabuada de multiplicação" cair no livro de Matemática, mas
+# custa 1 resposta boa e 3 recusas corretas — a disciplina é barata de
+# satisfazer e infla pergunta de fora. Em 0,75 ela orienta sem mandar.
+PESO_DISCIPLINA = 0.75
+
+
+
+def unidades(tokens, colados, df, total_documentos, df_bigrama, disciplina=None):
     """Palavras da pergunta e os pares que estavam COLADOS nela, com seus pesos.
 
     Só o par colado vira unidade. "sistema solar" é composto e exige aparecer
@@ -49,11 +58,23 @@ def unidades(tokens, colados, df, total_documentos, df_bigrama):
     for i, (a, b) in enumerate(zip(tokens, tokens[1:])):
         if i < len(colados) and colados[i]:
             saida.append((a, b, idf(df_bigrama(a, b), total_documentos)))
+
+    # A disciplina da pergunta é um requisito como qualquer outro: "tabuada de
+    # multiplicação" é uma pergunta de Matemática, e uma página de Educação
+    # digital que cite tabuada não a atende, por mais que repita as palavras.
+    # Pesa como um termo médio, para orientar sem mandar sozinha.
+    if disciplina and saida:
+        # meia unidade, não uma inteira: a disciplina orienta a escolha da obra,
+        # mas é barata de satisfazer — qualquer página do componente a atende.
+        # Com peso cheio, ela inflava perguntas fora do acervo ("programação em
+        # python" achava Educação Digital e passava).
+        peso_medio = sum(u[2] for u in saida) / float(len(saida))
+        saida.append((UNIDADE_DISCIPLINA, disciplina, peso_medio * PESO_DISCIPLINA))
     return saida
 
 
-def cobertura(unidades_pergunta, tokens_trecho) -> float:
-    """Fração da massa de IDF da pergunta que o trecho realmente contém (0 a 1)."""
+def cobertura(unidades_pergunta, tokens_trecho, disciplina_trecho=None) -> float:
+    """Fração da massa de IDF da pergunta que o trecho realmente atende (0 a 1)."""
     if not unidades_pergunta:
         return 0.0
     presentes = set(tokens_trecho)
@@ -61,7 +82,13 @@ def cobertura(unidades_pergunta, tokens_trecho) -> float:
     total = obtido = 0.0
     for a, b, peso in unidades_pergunta:
         total += peso
-        if (a in presentes) if b is None else ((a, b) in pares):
+        if a == UNIDADE_DISCIPLINA:
+            atendida = (disciplina_trecho == b)
+        elif b is None:
+            atendida = a in presentes
+        else:
+            atendida = (a, b) in pares
+        if atendida:
             obtido += peso
     return obtido / total if total > 0 else 0.0
 
