@@ -2,10 +2,11 @@
  * Recebe as perguntas da Bússola PNLD e escreve numa planilha.
  *
  * Passo a passo completo no README, seção "Registro das sessões de teste".
- * Depois de colar este código, RODE A FUNÇÃO `testar` uma vez no editor: é ela
- * que dispara o pedido de autorização para mexer na planilha. Sem isso o
- * doPost falha calado, porque a autorização concedida na implantação não cobre
- * serviços que o código ainda não usava.
+ *
+ * Para conferir se está funcionando, olhe a planilha — não teste com curl. O
+ * /exec responde 302 para uma URL de conteúdo que só o navegador busca direito,
+ * e por fora você recebe uma página de erro do Drive mesmo quando a linha foi
+ * gravada. A função `testar` abaixo é o jeito rápido de verificar de dentro.
  */
 
 // Deixe vazio se este script foi criado de dentro da planilha
@@ -85,9 +86,8 @@ function doGet() {
 }
 
 /**
- * RODE ESTA FUNÇÃO UMA VEZ no editor, antes de implantar.
- * Ela pede a autorização para escrever na planilha e deixa uma linha de teste,
- * que você pode apagar depois.
+ * Rode no editor para verificar de ponta a ponta: pede a autorização, se ainda
+ * não tiver sido concedida, e deixa uma linha de teste que você pode apagar.
  */
 function testar() {
   gravar_({

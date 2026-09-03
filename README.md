@@ -279,15 +279,10 @@ não precisa saber programar — o código já está pronto em
    trecho da URL da planilha entre `/d/` e `/edit`.
 3. Apague o `function myFunction() {}` que vem de exemplo e **cole todo o
    conteúdo** de `scripts/planilha/registro.gs`. Salve (o disquete, ou ⌘S).
-4. **Rode a função `testar` uma vez**, aqui no editor: escolha `testar` na
-   caixinha ao lado do botão ▶ e clique em **Executar**. O Google vai pedir
-   autorização e mostrar um aviso de "app não verificado" — é o seu próprio
-   script: **Avançado → Acessar (nome do projeto)** e autorize.
-
-   Este passo não é opcional. A autorização que você concede na implantação só
-   cobre os serviços que o código usava naquele momento; sem rodar `testar`
-   antes, o `doPost` falha calado quando tenta escrever na planilha. Deu certo
-   se aparecer uma linha de teste na planilha — pode apagar depois.
+4. Opcional, mas ajuda: rode a função **`testar`** aqui mesmo no editor —
+   escolha `testar` na caixinha ao lado do ▶ e clique em **Executar**. Ela
+   dispara o pedido de autorização e deixa uma linha de prova na planilha, então
+   você já sai daqui sabendo que funciona.
 5. Botão azul **Implantar → Nova implantação**.
 6. Na engrenagem ao lado de "Selecione o tipo", escolha **App da Web**. Depois:
    - *Executar como*: **Eu**
@@ -297,8 +292,14 @@ não precisa saber programar — o código já está pronto em
    com conta do Google": a página manda os dados sem ninguém estar logado.
 7. **Implantar** e copie a **URL do app da Web** (termina em `/exec`).
 
-Se o `doPost` falhar depois disso, o erro aparece em **Execuções**, no menu à
-esquerda do editor — é lá que dá para ver o motivo real.
+**Não teste o endpoint com `curl`.** O `/exec` responde 302 para uma URL de
+conteúdo que só o navegador busca direito; por fora, você recebe uma página de
+erro do Drive *mesmo quando a linha foi gravada na planilha*. Nós caímos nessa
+aqui: o erro dizia que não tinha funcionado e a linha estava lá. Para saber se
+funcionou, olhe a planilha, ou **Execuções** no menu à esquerda do editor.
+
+A página usa `mode: "no-cors"` e nunca lê a resposta, então esse 302 não afeta o
+registro em nada.
 
 Com a URL na mão, ligue na página:
 
