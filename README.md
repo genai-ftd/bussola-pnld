@@ -168,9 +168,14 @@ Três faixas, em vez de um corte único:
 
 | cobertura | comportamento |
 |---|---|
-| ≥ 0,50 | responde direto |
-| 0,38 – 0,50 | responde **com ressalva explícita** |
-| < 0,38 | diz que não encontrou, e diz qual termo faltou |
+| ≥ 0,68 | responde direto |
+| 0,50 – 0,68 | responde **com ressalva explícita** |
+| < 0,50 | diz que não encontrou, e diz qual termo faltou |
+
+Os limiares subiram quando o acervo passou de 5 para 13 obras: com 33 mil termos
+indexados, quase qualquer palavra do vocabulário escolar existe em alguma página,
+e o piso da cobertura sobe junto. **Recalibre depois de cada ampliação do acervo**
+— é o que o harness serve para dizer.
 
 A cobertura também **ordena**, não só decide: uma página que contém o que foi
 perguntado vence uma que só se parece com a pergunta no espaço vetorial.
@@ -182,11 +187,15 @@ perguntado vence uma que só se parece com a pergunta no espaço vetorial.
 
 | | responde direto | com ressalva | recusa |
 |---|---|---|---|
-| **25 dentro do acervo** | **25** | 0 | **0** |
-| **19 fora do acervo** | 2 | 2 | 15 |
+| **36 dentro do acervo** | **35** | 1 | **0** |
+| **18 fora do acervo** | 4 | 3 | 11 |
 
 Recall de 100% nas perguntas que o acervo responde, nenhuma recusa indevida, e
-2 em 19 perguntas de fora respondidas sem aviso (10,5%). Para mover o ponto de
+4 em 18 perguntas de fora respondidas sem aviso (22%).
+
+O conjunto foi refeito quando o acervo cresceu: "sistema solar" e "fotossíntese",
+que eram exemplos de pergunta fora, viraram conteúdo real ao entrar Ciências.
+Cada pergunta foi conferida contra o texto extraído antes de entrar numa lista. Para mover o ponto de
 operação, mude `LIMIAR_ALTO` / `LIMIAR_BAIXO` em `api/confianca.py` e rode o
 harness de novo — a varredura mostra o custo de cada escolha.
 
@@ -194,20 +203,25 @@ O conjunto rotulado é pequeno e feito à mão: serve para calibrar e para pegar
 regressão, não como medida de produção. Amplie antes de decidir se o formato
 determinístico se sustenta.
 
-### Limite conhecido
+### Limite conhecido: menção não é cobertura
 
-Os 2 erros restantes são colisão de sentido, não de calibragem, e valem ser
-olhados de perto antes de decidir o formato:
+Os 4 erros restantes são todos a mesma coisa — **uma menção de passagem conta
+como cobertura total**:
 
-- **"atividades sobre o sistema solar"** casa com "filtro solar" (orientação de
-  saúde), porque `solar` e `sistema` estão os dois na página.
-- **"dia da consciência negra"** casa com uma página que traz `consciência` e
-  `negra` em frases distintas — bonecas negras, representatividade.
+- **"Páscoa"** casa com a página 295 do livro de Matemática, onde "28 - Páscoa"
+  aparece dentro de um calendário cheio de números. É a única ocorrência em
+  10.789 trechos, e não responde nada.
+- **"regras do handebol"** casa com a Arena do Futuro, citada como sede das
+  Olimpíadas de 2016 numa aula de Geografia.
 
-Os termos estão mesmo lá; nenhum corte lexical separa isso. Subir o limiar para
-pegá-los custa respostas boas — a varredura do harness mostra o câmbio. Resolver
-de verdade pede proximidade entre termos ou desambiguação de sentido, que é outra
-camada de trabalho.
+A cobertura mede presença, não suficiência: um termo que aparece uma vez pontua
+igual a um que dá título a um capítulo. Distinguir os dois exigiria olhar
+frequência dentro do trecho — e isso derruba casos legítimos, como "fotossíntese",
+que também aparece uma vez só e é conteúdo de verdade. Medimos os dois lados
+antes de parar aqui.
+
+O caminho para resolver não é mexer no limiar; é a rodada de teste dizer quais
+erros de fato incomodam o professor. É para isso que existe o registro.
 
 ## Perguntas sobre a coleção
 

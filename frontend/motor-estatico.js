@@ -43,6 +43,21 @@ window.BUSSOLA_ESTATICO = (function(){
    "exemplo exemplos forma formas maneira maneiras jeito tema assunto aula aulas " +
    "colecao obra obras trabalho aborda ensina").split(" ").forEach(function(t){ STOP[t] = 1; });
 
+  /* Tokens e quais pares ficaram COLADOS no texto original. "sistema solar" é
+     composto — as palavras se tocam; "fotossíntese e as plantas" não é, há "e
+     as" no meio. Sem a distinção, o par vira exigência falsa. */
+  function tokenizarAdjacentes(texto){
+    var brutos = norm(texto).split(/\s+/), tokens = [], colados = [], ultimo = null;
+    for(var i = 0; i < brutos.length; i++){
+      var t = brutos[i];
+      if(t.length <= 2 || STOP[t]) continue;
+      if(tokens.length) colados.push(i === ultimo + 1);
+      tokens.push(t);
+      ultimo = i;
+    }
+    return { tokens: tokens, colados: colados };
+  }
+
   function tokenizar(texto){
     var saida = [], partes = norm(texto).split(/\s+/);
     for(var i = 0; i < partes.length; i++){
@@ -147,14 +162,16 @@ window.BUSSOLA_ESTATICO = (function(){
      que distingue composto de coincidência: "sistema solar" não existe em
      nenhuma página, mas "solar" existe — em "filtro solar". Sem o par, a
      pergunta sobre astronomia casava com protetor solar. */
-  function unidadesDaPergunta(tokens){
+  function unidadesDaPergunta(tokens, colados){
     var vistos = {}, saida = [], i;
     for(i = 0; i < tokens.length; i++){
       if(vistos[tokens[i]]) continue;
       vistos[tokens[i]] = 1;
       saida.push([tokens[i], null, idfTermo(tokens[i])]);
     }
+    // só o par colado vira unidade
     for(i = 0; i + 1 < tokens.length; i++){
+      if(!colados[i]) continue;
       var df = trechosComFrase(tokens[i], tokens[i + 1]).length;
       saida.push([tokens[i], tokens[i + 1],
                   Math.log(1 + (D.n - df + 0.5) / (df + 0.5))]);
@@ -197,7 +214,6 @@ window.BUSSOLA_ESTATICO = (function(){
   /* ---------------------------- índice BM25 ----------------------------- */
 
   var K1 = 1.5, B = 0.75, indice = null;
-  var PESO_ANCORAGEM = 0.6;   // o quanto conter os termos da pergunta promove um trecho
 
   function construirIndice(){
     var docs = D.trechos, N = docs.length, i, j, t;
@@ -513,20 +529,27 @@ window.BUSSOLA_ESTATICO = (function(){
             if(!elegivel[achados[j]]) elegivel[achados[j]] = 0.0001;
           }
         }
-        var unids = unidadesDaPergunta(tokens);
+        // a cobertura julga a pergunta inteira, inclusive o que virou filtro
+        var comAdj = tokenizarAdjacentes(assunto);
+        var unids = unidadesDaPergunta(comAdj.tokens, comAdj.colados);
         var candidatos = [], cobs = {};
         for(var chave in elegivel){
           var d = +chave;
           var cob = cobertura(unids, indice.tokens[d]);
           cobs[d] = cob;
-          candidatos.push([elegivel[d] * fatorMetadado(D.obras[D.trechos[d][0]], filtros)
-                           * (1 + PESO_ANCORAGEM * cob), d]);
+          candidatos.push([elegivel[d] * fatorMetadado(D.obras[D.trechos[d][0]], filtros), d]);
         }
         if(!candidatos.length){
           resolve(montarResposta(pergunta, nome, filtros, [], tokens, assunto));
           return;
         }
-        candidatos.sort(function(a, b){ return b[0] - a[0]; });
+        // a cobertura ordena primeiro e a pontuação desempata: um trecho que
+        // aparece nos dois canais somava RRF em dobro e vencia mesmo contendo
+        // um terço do que foi perguntado
+        candidatos.sort(function(a, b){
+          var ca = Math.round((cobs[a[1]] || 0) * 10), cb = Math.round((cobs[b[1]] || 0) * 10);
+          return cb !== ca ? cb - ca : b[0] - a[0];
+        });
         escolhidos = diversificar(candidatos.slice(0, 200), 3, 3);
         resultados = escolhidos.map(function(p){
           return montarResultado(p[1], pergunta, cobs[p[1]] || 0);

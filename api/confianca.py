@@ -27,8 +27,8 @@ import math
 #   < BAIXO                diz que não encontrou, e diz qual termo faltou
 #
 # Subir ALTO = menos resposta errada sem aviso, mais resposta com ressalva.
-LIMIAR_ALTO = 0.36
-LIMIAR_BAIXO = 0.26
+LIMIAR_ALTO = 0.68
+LIMIAR_BAIXO = 0.50
 
 
 def idf(frequencia_documento: int, total_documentos: int) -> float:
@@ -37,15 +37,18 @@ def idf(frequencia_documento: int, total_documentos: int) -> float:
                     / (frequencia_documento + 0.5))
 
 
-def unidades(tokens, df, total_documentos, df_bigrama):
-    """Palavras e pares adjacentes da pergunta, cada um com seu peso.
+def unidades(tokens, colados, df, total_documentos, df_bigrama):
+    """Palavras da pergunta e os pares que estavam COLADOS nela, com seus pesos.
 
-    `df_bigrama(a, b)` devolve em quantos trechos o par aparece colado.
+    Só o par colado vira unidade. "sistema solar" é composto e exige aparecer
+    junto; "fotossíntese e as plantas" são dois assuntos numa frase, e exigir o
+    par derrubaria a pergunta à toa.
     """
     saida = [(t, None, idf(df.get(t, 0), total_documentos))
              for t in dict.fromkeys(tokens)]
-    for a, b in zip(tokens, tokens[1:]):
-        saida.append((a, b, idf(df_bigrama(a, b), total_documentos)))
+    for i, (a, b) in enumerate(zip(tokens, tokens[1:])):
+        if i < len(colados) and colados[i]:
+            saida.append((a, b, idf(df_bigrama(a, b), total_documentos)))
     return saida
 
 

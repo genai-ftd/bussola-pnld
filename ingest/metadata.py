@@ -26,6 +26,9 @@ COLECOES = {
     "a conquista": "A Conquista",
     "conquista": "A Conquista",
     "baoba": "Baobá",
+    # coleções de língua estrangeira, que não seguem o nome das demais
+    "step by step": "Step by Step",
+    "pasitos": "Pasitos",
 }
 
 # ordem importa: chaves mais específicas primeiro
@@ -74,6 +77,14 @@ def detect_disciplina(text: str):
     return None
 
 
+def anos_multiplos(text: str):
+    """Volumes que atendem mais de um ano: "1° e 2° anos", "3°, 4° e 5° anos"."""
+    n = norm(text)
+    if not re.search(r"\b[1-5]\s*(?:o|a)?\s*(?:,|e)\s*[1-5]", n):
+        return []
+    return sorted({int(d) for d in re.findall(r"\b([1-5])\s*(?:o|a)?\s*(?=[,e\s]|anos)", n)})
+
+
 def detect_ano(text: str):
     """Ano/volume citado no texto. Retorna int 1..5 ou None.
 
@@ -93,14 +104,30 @@ def detect_ano(text: str):
 
 
 def parse_obra(title: str, filename: str = "") -> dict:
-    """Metadados da obra a partir do título do Issuu, com o nome do arquivo como reforço."""
-    fonte = "{} {}".format(title or "", (filename or "").replace("_", " ").replace("-", " "))
-    volume_unico = bool(re.search(r"volume\s*unico", norm(fonte)))
+    """Metadados da obra a partir do título do Issuu e do nome do arquivo.
+
+    Num bloco do acervo o título está deslocado um registro em relação ao
+    arquivo, e o volume sai errado: "Plantar_Matemática_Volume 2.pdf" está
+    publicado como "Volume 1". Conferimos abrindo o PDF — ele diz 2º ano nas
+    páginas de abertura. Por isso o ano vem do NOME DO ARQUIVO quando os dois
+    discordam: o nome é o que veio no upload, o título foi digitado depois.
+    """
+    nome_limpo = (filename or "").replace("_", " ").replace("-", " ")
+    fonte = "{} {}".format(title or "", nome_limpo)
+    multiplos = anos_multiplos(title or "")
+    volume_unico = bool(re.search(r"volume\s*unico", norm(fonte))) or len(multiplos) > 1
+
+    ano_arquivo = detect_ano(nome_limpo)
+    ano_titulo = detect_ano(title or "")
+    ano = ano_arquivo if ano_arquivo is not None else ano_titulo
+
     return {
         "colecao": detect_colecao(fonte),
         "disciplina": detect_disciplina(fonte),
-        "ano": None if volume_unico else detect_ano(fonte),
+        "ano": None if volume_unico else ano,
         "volume_unico": volume_unico,
+        "anos": multiplos,          # volumes que cobrem mais de um ano
+        "ano_divergente": bool(ano_arquivo and ano_titulo and ano_arquivo != ano_titulo),
     }
 
 

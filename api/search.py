@@ -53,6 +53,25 @@ colecao coleção obra obras trabalho aborda ensina
 # valendo IDF fazia a ancoragem punir perguntas boas.
 
 
+def tokenizar_adjacentes(texto: str):
+    """Tokens da pergunta e quais pares ficaram COLADOS no texto original.
+
+    "sistema solar" é um composto — as duas palavras se tocam. "fotossíntese e
+    as plantas" não é: há "e as" no meio. Sem essa distinção, o par virava uma
+    exigência falsa e derrubava perguntas legítimas, porque o acervo obviamente
+    não tem "fotossíntese plantas" colado em lugar nenhum.
+    """
+    tokens, colados, ultimo_indice = [], [], None
+    for posicao, bruto in enumerate(norm(texto).split()):
+        if len(bruto) <= 2 or bruto in STOPWORDS:
+            continue
+        if tokens:
+            colados.append(posicao == ultimo_indice + 1)
+        tokens.append(bruto)
+        ultimo_indice = posicao
+    return tokens, colados
+
+
 def tokenizar(texto: str):
     return [t for t in norm(texto).split() if len(t) > 2 and t not in STOPWORDS]
 
@@ -252,7 +271,13 @@ class Buscador:
         # que contém o que foi perguntado é melhor resposta que uma que só se
         # parece com a pergunta no espaço vetorial. Sem isto a busca achava a
         # página exata pelo BM25 e a descartava na hora de ordenar.
-        unidades_pergunta = unidades(tokens, self.bm25.df, self.bm25.n, self.df_bigrama)
+        # A cobertura julga a pergunta inteira, inclusive o que virou filtro: se
+        # o professor escreveu "matemática", a página precisa falar disso para a
+        # gente afirmar que encontrou. O filtro decide ranking, não dispensa a
+        # palavra de aparecer.
+        tokens_cobertura, colados = tokenizar_adjacentes(assunto)
+        unidades_pergunta = unidades(tokens_cobertura, colados, self.bm25.df,
+                                     self.bm25.n, self.df_bigrama)
         self._cobertura_cache = {}
         classificados = []
         for idx, base in fundido.items():
@@ -262,10 +287,18 @@ class Buscador:
             self._cobertura_cache[idx] = cob
             pontuacao = (base + PESO_DENSO * max(float(similaridades[idx]), 0.0)) \
                 * self._fator_metadado(obra, filtros) \
-                * self._fator_paratexto(idx, chunk) \
-                * (1.0 + PESO_ANCORAGEM * cob)
+                * self._fator_paratexto(idx, chunk)
             classificados.append((pontuacao, idx))
-        classificados.sort(reverse=True)
+
+        # A cobertura ordena PRIMEIRO, e a pontuação de recuperação desempata.
+        # Como multiplicador ela não dava conta: um trecho que aparece nos dois
+        # canais soma RRF em dobro, e vencia mesmo com um terço da cobertura —
+        # a página com "Fotossíntese" e cobertura 1,0, primeira do BM25, estava
+        # sendo descartada em favor de páginas com 0,31. Arredondar a cobertura
+        # evita que diferenças de ruído atropelem o ranking de relevância.
+        classificados.sort(
+            key=lambda par: (round(self._cobertura_cache[par[1]], 1), par[0]),
+            reverse=True)
 
         selecionados = self._diversificar(classificados, similaridades, pergunta,
                                           principais, extras)
@@ -290,7 +323,7 @@ class Buscador:
             # o que existe de mais próximo quando nada passa na ancoragem: serve
             # para mostrar assunto vizinho SEM apresentá-lo como resposta
             "vizinhos": [] if ancorados else selecionados[:3],
-            "termos_ausentes": termos_ausentes(tokens, self.bm25.df),
+            "termos_ausentes": termos_ausentes(tokens_cobertura, self.bm25.df),
             "termos": tokens,
         }
 

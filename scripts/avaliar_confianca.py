@@ -16,8 +16,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from api.search import Buscador
 
-# Perguntas que o acervo indexado (LP, Espanhol e Arte dos Anos Iniciais) responde
+# Conjunto rotulado com evidência, não com palpite: cada pergunta foi conferida
+# contra o texto extraído antes de entrar numa lista. Refeito quando o acervo
+# passou de 5 para 13 obras — "sistema solar" e "fotossíntese", que antes eram
+# exemplos de pergunta fora, viraram conteúdo real ao entrar Ciências.
 DENTRO = [
+    # componentes que já estavam na base
     "atividades de leitura para o 3º ano",
     "como trabalhar cantigas populares",
     "avaliação diagnóstica em espanhol",
@@ -40,34 +44,45 @@ DENTRO = [
     "material de apoio para o professor",
     "atividades de teatro e expressão corporal",
     "trabalhar o gênero receita",
-    # o acervo tem aula do gênero receita (receita=24, bolo=7, chocolate=9)
     "receita de bolo de chocolate",
-    # a expressão "festa junina" aparece colada em uma página
     "festa junina",
     "como desenvolver a escrita autônoma",
     "temas contemporâneos transversais",
+    # componentes que entraram com as oito obras novas
+    "como ensinar a tabuada de multiplicação",
+    "atividades sobre o sistema solar",
+    "fotossíntese e as plantas",
+    "dia da consciência negra",
+    "trabalho com mapas e cartografia",
+    "atividades sobre passado presente e memória",
+    "vocabulário em inglês para crianças",
+    "jogos e brincadeiras na educação física",
+    "uso seguro da internet com os estudantes",
+    "como orientar a reescrita de um texto",
 ]
 
-# Perguntas plausíveis de um professor, mas fora do que está indexado
+# Perguntas plausíveis de um professor, mas fora do que está indexado. Conferido
+# termo a termo: "handebol" só aparece como sede olímpica, "Páscoa" é o músico
+# Hermeto Pascoal, e os compostos abaixo não existem em nenhuma página.
 FORA = [
     "Páscoa",
     "atividades sobre a Páscoa",
     "como trabalhar a Páscoa em sala de aula",
     "programação em python",
-    "tabuada de multiplicação",
     "campeonato brasileiro de futebol",
     "como a coleção trata turmas multisseriadas",
     "experimentos de química no laboratório",
-    "atividades sobre o sistema solar",
     "教育について",
     "revolução industrial no século XIX",
-    "como ensinar frações equivalentes",
-    "fotossíntese e as plantas",
     "regras do handebol",
-    "dia da consciência negra",
     "atividades de robótica educacional",
     "olimpíadas de matemática",
     "como calcular perímetro e área",
+    "como ensinar frações equivalentes",
+    "guerra fria e o muro de berlim",
+    "tabela periódica dos elementos",
+    "declaração de imposto de renda",
+    "primeiros socorros e ressuscitação",
 ]
 
 

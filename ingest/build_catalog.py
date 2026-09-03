@@ -79,6 +79,13 @@ def main():
                 publicacoes, local["arquivo"], local["tamanho"], local["paginas_pdf"])
         titulo = (pub or {}).get("title") or ""
         meta = parse_obra(titulo, local["arquivo"])
+        if meta.get("ano_divergente"):
+            # o título publicado contradiz o arquivo; usamos o nome do arquivo
+            # também como título, para o cartão não dizer um volume e a etiqueta
+            # dizer outro
+            titulo = os.path.splitext(local["arquivo"])[0].replace("_", " ")
+            print("     [ATENÇÃO] título do Issuu discorda do arquivo no volume; "
+                  "usando o nome do arquivo: {}".format(titulo))
         info = (pub or {}).get("fileInfo") or {}
         paginas_issuu = info.get("pageCount")
         entrada = {
@@ -89,6 +96,7 @@ def main():
             "disciplina": meta["disciplina"],
             "ano": meta["ano"],
             "volume_unico": meta["volume_unico"],
+            "anos": meta.get("anos") or [],
             "paginas_pdf": local["paginas_pdf"],
             "issuu": {
                 "casado_por": criterio,

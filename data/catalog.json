@@ -7,12 +7,153 @@
     "disciplina": "Língua Portuguesa",
     "ano": 3,
     "volume_unico": false,
+    "anos": [],
     "paginas_pdf": 324,
     "issuu": {
       "casado_por": "tamanho-do-arquivo",
       "slug": "gym8e6iy5zm",
       "public_location": "https://issuu.com/editoraftd/docs/pnld_2027_anos_iniciais_-_entrela_o_5eddce22a70710",
       "paginas": 324,
+      "offset_pagina": 0,
+      "copyright_confirmado": false
+    }
+  },
+  {
+    "id": "Entrela_os_Produ__o_de_texto_3-4_e_5_anos",
+    "arquivo": "Entrela_os_Produ__o_de_texto_3-4_e_5_anos.pdf",
+    "titulo": "PNLD 2027 Anos Iniciais - Entrelaços - Produção de Texto - Volume único",
+    "colecao": "Entrelaços",
+    "disciplina": "Produção de Texto",
+    "ano": null,
+    "volume_unico": true,
+    "anos": [],
+    "paginas_pdf": 212,
+    "issuu": {
+      "casado_por": "tamanho-do-arquivo",
+      "slug": "zyfm8acmqsq",
+      "public_location": "https://issuu.com/editoraftd/docs/pnld_2027_anos_iniciais_-_entrela_o_56d32bd52a723b",
+      "paginas": 212,
+      "offset_pagina": 0,
+      "copyright_confirmado": false
+    }
+  },
+  {
+    "id": "IMLP0000030023P270102207207",
+    "arquivo": "IMLP0000030023P270102207207.pdf",
+    "titulo": "Entrelaços - Ciências da Natureza - Volume 3",
+    "colecao": "Entrelaços",
+    "disciplina": "Ciências da Natureza",
+    "ano": 3,
+    "volume_unico": false,
+    "anos": [],
+    "paginas_pdf": 196,
+    "issuu": {
+      "casado_por": "tamanho-do-arquivo",
+      "slug": "zcxf14wkblz",
+      "public_location": "https://issuu.com/editoraftd/docs/entrela_os_-_ci_ncias_da_natureza_-_volume_1",
+      "paginas": 196,
+      "offset_pagina": 0,
+      "copyright_confirmado": false
+    }
+  },
+  {
+    "id": "IMLP0000030026P270102040040",
+    "arquivo": "IMLP0000030026P270102040040.pdf",
+    "titulo": "Entrelaços - História - Volume 3",
+    "colecao": "Entrelaços",
+    "disciplina": "História",
+    "ano": 3,
+    "volume_unico": false,
+    "anos": [],
+    "paginas_pdf": 196,
+    "issuu": {
+      "casado_por": "tamanho-do-arquivo",
+      "slug": "rcsqk4wktyu",
+      "public_location": "https://issuu.com/editoraftd/docs/entrela_os_-_hist_ria_-_volume_1",
+      "paginas": 196,
+      "offset_pagina": 0,
+      "copyright_confirmado": false
+    }
+  },
+  {
+    "id": "IMLP0000030029P270102050050",
+    "arquivo": "IMLP0000030029P270102050050.pdf",
+    "titulo": "Entrelaços - Geografia - Volume 3",
+    "colecao": "Entrelaços",
+    "disciplina": "Geografia",
+    "ano": 3,
+    "volume_unico": false,
+    "anos": [],
+    "paginas_pdf": 196,
+    "issuu": {
+      "casado_por": "tamanho-do-arquivo",
+      "slug": "zejaznk9oen",
+      "public_location": "https://issuu.com/editoraftd/docs/entrela_os_-_geografia_-_volume_1",
+      "paginas": 196,
+      "offset_pagina": 0,
+      "copyright_confirmado": false
+    }
+  },
+  {
+    "id": "IMLP0000030042P270103090090",
+    "arquivo": "IMLP0000030042P270103090090.pdf",
+    "titulo": "Step by step - Língua Inglesa - Volume 3",
+    "colecao": "Step by Step",
+    "disciplina": "Língua Inglesa",
+    "ano": 3,
+    "volume_unico": false,
+    "anos": [],
+    "paginas_pdf": 100,
+    "issuu": {
+      "casado_por": "tamanho-do-arquivo",
+      "slug": "z1l94nd8sci",
+      "public_location": "https://issuu.com/editoraftd/docs/step_by_step_-_l_ngua_inglesa_-_volume_3",
+      "paginas": 100,
+      "offset_pagina": 0,
+      "copyright_confirmado": false
+    }
+  },
+  {
+    "id": "IMLP0000180039P270102099099",
+    "arquivo": "IMLP0000180039P270102099099.pdf",
+    "titulo": "Entrelaços - Educação digital e midiática - Volume único - 3°, 4° e 5° anos",
+    "colecao": "Entrelaços",
+    "disciplina": "Educação Digital",
+    "ano": null,
+    "volume_unico": true,
+    "anos": [
+      3,
+      4,
+      5
+    ],
+    "paginas_pdf": 148,
+    "issuu": {
+      "casado_por": "tamanho-do-arquivo",
+      "slug": "ul2vh4mzx2j",
+      "public_location": "https://issuu.com/editoraftd/docs/entrela_os_-_educa_o_digital_e_midi_tica_-_volume",
+      "paginas": 148,
+      "offset_pagina": 0,
+      "copyright_confirmado": false
+    }
+  },
+  {
+    "id": "IMLP0000190006P270101160160",
+    "arquivo": "IMLP0000190006P270101160160.pdf",
+    "titulo": "PNLD 2027 Anos Iniciais - Entrelaços - Educação Física - 1° e 2° anos",
+    "colecao": "Entrelaços",
+    "disciplina": "Educação Física",
+    "ano": null,
+    "volume_unico": true,
+    "anos": [
+      1,
+      2
+    ],
+    "paginas_pdf": 84,
+    "issuu": {
+      "casado_por": "tamanho-do-arquivo",
+      "slug": "bvdzlq29v9d",
+      "public_location": "https://issuu.com/editoraftd/docs/pnld_2027_anos_iniciais_-_entrela_os_-_educa_o_f_",
+      "paginas": 84,
       "offset_pagina": 0,
       "copyright_confirmado": false
     }
@@ -25,6 +166,7 @@
     "disciplina": "Arte",
     "ano": 1,
     "volume_unico": false,
+    "anos": [],
     "paginas_pdf": 164,
     "issuu": {
       "casado_por": "tamanho-do-arquivo",
@@ -43,6 +185,7 @@
     "disciplina": "Língua Espanhola",
     "ano": 1,
     "volume_unico": false,
+    "anos": [],
     "paginas_pdf": 116,
     "issuu": {
       "casado_por": "tamanho-do-arquivo",
@@ -61,6 +204,7 @@
     "disciplina": "Língua Espanhola",
     "ano": 2,
     "volume_unico": false,
+    "anos": [],
     "paginas_pdf": 116,
     "issuu": {
       "casado_por": "tamanho-do-arquivo",
@@ -79,11 +223,31 @@
     "disciplina": "Língua Portuguesa",
     "ano": 1,
     "volume_unico": false,
+    "anos": [],
     "paginas_pdf": 324,
     "issuu": {
       "casado_por": "tamanho-do-arquivo",
       "slug": "ekpbcq1vwpb",
       "public_location": "https://issuu.com/editoraftd/docs/pnld_2027_anos_iniciais_-_plantar_-_l_ngua_portugu",
+      "paginas": 324,
+      "offset_pagina": 0,
+      "copyright_confirmado": false
+    }
+  },
+  {
+    "id": "Plantar_Matemática_Volume 2",
+    "arquivo": "Plantar_Matemática_Volume 2.pdf",
+    "titulo": "Plantar Matemática Volume 2",
+    "colecao": "Plantar",
+    "disciplina": "Matemática",
+    "ano": 2,
+    "volume_unico": false,
+    "anos": [],
+    "paginas_pdf": 324,
+    "issuu": {
+      "casado_por": "tamanho-do-arquivo",
+      "slug": "3oteo91glj7",
+      "public_location": "https://issuu.com/editoraftd/docs/plantar_matem_tica_volume_1",
       "paginas": 324,
       "offset_pagina": 0,
       "copyright_confirmado": false
