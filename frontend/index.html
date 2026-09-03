@@ -57,6 +57,11 @@
     align-items:center;justify-content:space-between;gap:12px;flex:none}
   .cabecalho h1{margin:0;font-size:1rem;font-weight:700;letter-spacing:-.01em}
   .cabecalho p{margin:2px 0 0;font-size:.72rem;opacity:.82;font-weight:400}
+  .acoes{display:flex;align-items:center;gap:8px;flex:none}
+  .registro{background:rgba(255,255,255,.14);border:0;color:#fff;border-radius:9px;
+    padding:7px 10px;font-size:.68rem;font-weight:600;cursor:pointer;letter-spacing:.02em}
+  .registro:hover{background:rgba(255,255,255,.26)}
+  .registro span{opacity:.75;font-variant-numeric:tabular-nums}
   .fechar{background:rgba(255,255,255,.14);border:0;color:#fff;width:30px;height:30px;
     border-radius:9px;font-size:1.1rem;line-height:1;cursor:pointer;flex:none}
   .fechar:hover{background:rgba(255,255,255,.26)}
@@ -157,7 +162,12 @@
       <h1>Bússola PNLD</h1>
       <p>Encontre o conteúdo dentro das obras</p>
     </div>
-    <button class="fechar" id="fechar" aria-label="Fechar">&times;</button>
+    <div class="acoes">
+      <button class="registro" id="baixarRegistro" title="Baixar o registro desta sessão">
+        Registro <span id="contadorRegistro">0</span>
+      </button>
+      <button class="fechar" id="fechar" aria-label="Fechar">&times;</button>
+    </div>
   </div>
   <div class="conversa" id="conversa" aria-live="polite"></div>
   <form class="escrita" id="formulario">
@@ -301,6 +311,128 @@
     rolar();
   }
 
+  /* =============================== registro =============================
+     A rodada de teste vai acontecer na página publicada, que é estática e não
+     tem servidor para receber log. Então gravamos no próprio navegador e o
+     testador exporta uma planilha ao final. Se `window.BUSSOLA_LOG_URL` estiver
+     definido (um Apps Script publicado como web app, por exemplo), cada pergunta
+     também é enviada para lá na hora, e aí a planilha enche sozinha.
+     ====================================================================== */
+
+  var CHAVE_REGISTRO = "bussola_registro";
+
+  function novaSessao(){
+    return "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  var registro = {
+    sessao: novaSessao(),
+    linhas: [],
+
+    carregar: function(){
+      try {
+        var cru = localStorage.getItem(CHAVE_REGISTRO);
+        if(cru) this.linhas = JSON.parse(cru) || [];
+      } catch(e) { this.linhas = []; }
+      this.pintarContador();
+    },
+
+    gravar: function(pergunta, d, ms){
+      var linha = {
+        sessao: this.sessao,
+        momento: new Date().toISOString(),
+        nome: estado.nome,
+        pergunta: pergunta,
+        assunto: d.assunto || "",
+        confianca: d.confianca || "",
+        cobertura: d.resultados && d.resultados[0] && d.resultados[0].cobertura != null
+          ? Number(d.resultados[0].cobertura).toFixed(4) : "",
+        ms: ms,
+        filtro_ano: (d.filtros && d.filtros.ano) || "",
+        filtro_disciplina: (d.filtros && d.filtros.disciplina) || "",
+        filtro_colecao: (d.filtros && d.filtros.colecao) || "",
+        n_resultados: (d.resultados || []).length,
+        resposta: d.texto || "",
+        resultados: (d.resultados || []).map(function(r){
+          return { obra: r.titulo, pagina: r.descricao_pagina, link: r.link,
+                   cobertura: r.cobertura, trecho: r.trecho };
+        })
+      };
+      this.linhas.push(linha);
+      try { localStorage.setItem(CHAVE_REGISTRO, JSON.stringify(this.linhas)); } catch(e) {}
+      this.pintarContador();
+      this.enviar(linha);
+    },
+
+    enviar: function(linha){
+      if(!window.BUSSOLA_LOG_URL) return;
+      try {
+        fetch(window.BUSSOLA_LOG_URL, {
+          method: "POST",
+          mode: "no-cors",                       // Apps Script não devolve CORS
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(linha)
+        }).catch(function(){});
+      } catch(e) {}
+    },
+
+    pintarContador: function(){
+      var alvo = document.getElementById("contadorRegistro");
+      if(alvo) alvo.textContent = this.linhas.length;
+    },
+
+    /* Ponto e vírgula como separador e BOM na frente: é assim que o Excel em
+       português abre o arquivo já nas colunas certas. O Sheets importa igual. */
+    csv: function(){
+      var col = ["sessao","momento","nome","pergunta","assunto","confianca",
+                 "cobertura","ms","filtro_ano","filtro_disciplina","filtro_colecao",
+                 "n_resultados","resposta"];
+      for(var i = 1; i <= 3; i++){
+        col.push("r" + i + "_obra", "r" + i + "_pagina", "r" + i + "_cobertura",
+                 "r" + i + "_link", "r" + i + "_trecho");
+      }
+      function celula(v){
+        var t = v === undefined || v === null ? "" : String(v);
+        return '"' + t.replace(/"/g, '""').replace(/\r?\n/g, " ") + '"';
+      }
+      var linhas = [col.join(";")];
+      this.linhas.forEach(function(l){
+        var campos = [l.sessao, l.momento, l.nome, l.pergunta, l.assunto, l.confianca,
+                      l.cobertura, l.ms, l.filtro_ano, l.filtro_disciplina,
+                      l.filtro_colecao, l.n_resultados, l.resposta];
+        for(var i = 0; i < 3; i++){
+          var r = l.resultados[i] || {};
+          campos.push(r.obra, r.pagina, r.cobertura, r.link, r.trecho);
+        }
+        linhas.push(campos.map(celula).join(";"));
+      });
+      return "\ufeff" + linhas.join("\r\n");
+    },
+
+    baixar: function(){
+      if(!this.linhas.length){
+        balao("bot", "Ainda não há nenhuma pergunta registrada nesta sessão.");
+        return;
+      }
+      var nome = "bussola-registro-" + new Date().toISOString().slice(0, 10) + ".csv";
+      var blob = new Blob([this.csv()], { type: "text/csv;charset=utf-8" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = nome;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    },
+
+    limpar: function(){
+      this.linhas = [];
+      try { localStorage.removeItem(CHAVE_REGISTRO); } catch(e) {}
+      this.pintarContador();
+    }
+  };
+
+  // também acessível pelo console, caso o download seja bloqueado no ambiente
+  window.bussolaRegistro = registro;
+
   /* ================================ fluxo =============================== */
 
   function iniciar(){
@@ -333,8 +465,10 @@
     el.enviar.disabled = true;
     var carregando = digitando();
 
+    var inicio = Date.now();
     MOTOR.buscar(pergunta, estado.nome).then(function(d){
       carregando.remove();
+      registro.gravar(pergunta, d, Date.now() - inicio);
       balao("bot", d.texto);
       (d.resultados || []).forEach(function(r){ cartao(r, d.termos); });
       tambemEncontrei(d.tambem_encontrei, d.rotulo);
@@ -356,8 +490,11 @@
   }
   function fechar(){ document.body.classList.remove("aberto"); }
 
+  registro.carregar();
+
   el.fab.onclick = abrir;
   el.fechar.onclick = fechar;
+  document.getElementById("baixarRegistro").onclick = function(){ registro.baixar(); };
   el.form.onsubmit = function(ev){ ev.preventDefault(); enviarTexto(el.entrada.value); };
   document.addEventListener("keydown", function(ev){ if(ev.key === "Escape") fechar(); });
 

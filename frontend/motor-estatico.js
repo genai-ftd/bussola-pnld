@@ -412,7 +412,7 @@ window.BUSSOLA_ESTATICO = (function(){
     return d.length ? " Priorizei o que é de " + d.join(" · ") + "." : "";
   }
 
-  function montarResposta(pergunta, nome, filtros, resultados, tokens){
+  function montarResposta(pergunta, nome, filtros, resultados, tokens, assunto){
     nome = (nome || "").trim() || "Professor(a)";
     var melhor = 0, i;
     for(i = 0; i < resultados.length; i++) melhor = Math.max(melhor, resultados[i].cobertura);
@@ -431,6 +431,8 @@ window.BUSSOLA_ESTATICO = (function(){
       }
       return {
         texto: texto,
+        assunto: assunto,
+        filtros: filtros,
         resultados: [],
         tambem_encontrei: resultados.slice(0, 3),
         rotulo: resultados.length ? D.copy.rotulo_vizinhos : null,
@@ -450,6 +452,8 @@ window.BUSSOLA_ESTATICO = (function(){
     }
     return {
       texto: abertura,
+      assunto: assunto,
+      filtros: filtros,
       termos: tokens,
       resultados: principais,
       tambem_encontrei: ancorados.slice(3),
@@ -465,6 +469,7 @@ window.BUSSOLA_ESTATICO = (function(){
       // deixa o "digitando…" pintar antes do primeiro cálculo, que monta o índice
       setTimeout(function(){
         var filtros = filtrosDa(pergunta), tokens = tokensDaPergunta(pergunta);
+        var assunto = extrairAssunto(pergunta);
         var escolhidos, resultados;
 
         // 1. pergunta sobre a coleção inteira: panorama curado
@@ -477,6 +482,8 @@ window.BUSSOLA_ESTATICO = (function(){
             resultados: responde ? itens.slice(0, 3) : [],
             tambem_encontrei: responde ? [] : itens.slice(0, 3),
             rotulo: responde ? null : D.copy.rotulo_vizinhos,
+            assunto: assunto,
+            filtros: filtros,
             confianca: "guiada"
           });
           return;
@@ -487,7 +494,7 @@ window.BUSSOLA_ESTATICO = (function(){
         if(precomputado){
           escolhidos = diversificar(precomputado.r, 3, 3);
           resultados = escolhidos.map(function(p){ return montarResultado(p[1], pergunta, p[2]); });
-          resolve(montarResposta(pergunta, nome, filtros, resultados, tokens));
+          resolve(montarResposta(pergunta, nome, filtros, resultados, tokens, assunto));
           return;
         }
 
@@ -516,7 +523,7 @@ window.BUSSOLA_ESTATICO = (function(){
                            * (1 + PESO_ANCORAGEM * cob), d]);
         }
         if(!candidatos.length){
-          resolve(montarResposta(pergunta, nome, filtros, [], tokens));
+          resolve(montarResposta(pergunta, nome, filtros, [], tokens, assunto));
           return;
         }
         candidatos.sort(function(a, b){ return b[0] - a[0]; });
@@ -524,7 +531,7 @@ window.BUSSOLA_ESTATICO = (function(){
         resultados = escolhidos.map(function(p){
           return montarResultado(p[1], pergunta, cobs[p[1]] || 0);
         });
-        resolve(montarResposta(pergunta, nome, filtros, resultados, tokens));
+        resolve(montarResposta(pergunta, nome, filtros, resultados, tokens, assunto));
       }, 220);
     });
   }

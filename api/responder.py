@@ -188,6 +188,7 @@ def montar_resposta(resultado, nome=None, acervo_vazio=False, guiada=None):
 
     return {
         "texto": texto,
+        "assunto": resultado.get("assunto", ""),
         "termos": resultado.get("termos", []),
         "resultados": [_cartao(r) for r in principais],
         "tambem_encontrei": [_cartao(r) for r in resultado.get("tambem_encontrei", [])],

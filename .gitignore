@@ -28,3 +28,6 @@ __pycache__/
 models/
 .cache/
 dist/
+
+# registros das sessões de teste
+data/registros/

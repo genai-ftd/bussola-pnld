@@ -5,6 +5,7 @@ O front-end estático é servido na raiz: http://127.0.0.1:8000/
 """
 import asyncio
 import functools
+import json
 import os
 import sys
 import time
@@ -24,6 +25,7 @@ from api.responder import montar_resposta
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIR_FRONT = os.path.join(RAIZ, "frontend")
+DIR_REGISTROS = os.path.join(RAIZ, "data", "registros")
 load_dotenv(os.path.join(RAIZ, ".env"))
 
 app = FastAPI(title="Bússola PNLD — API de busca", version="0.1.0")
@@ -100,6 +102,38 @@ def catalogo():
     ]}
 
 
+def registrar(pergunta, nome, resultado, resposta, ms):
+    """Grava a pergunta e o que a busca devolveu, uma linha JSON por pergunta.
+
+    Vale no modo local; na página publicada não há servidor, e o registro fica
+    no navegador do testador (ver o módulo `registro` em frontend/index.html).
+    """
+    try:
+        os.makedirs(DIR_REGISTROS, exist_ok=True)
+        caminho = os.path.join(DIR_REGISTROS,
+                               time.strftime("%Y-%m-%d") + ".jsonl")
+        linha = {
+            "momento": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "nome": nome,
+            "pergunta": pergunta,
+            "assunto": resultado.get("assunto"),
+            "confianca": resultado.get("confianca"),
+            "cobertura": resultado.get("cobertura"),
+            "filtros": resultado.get("filtros"),
+            "ms": ms,
+            "resposta": resposta.get("texto"),
+            "resultados": [
+                {"obra": r.get("titulo"), "pagina": r.get("descricao_pagina"),
+                 "cobertura": r.get("cobertura"), "link": r.get("link")}
+                for r in resposta.get("resultados", [])
+            ],
+        }
+        with open(caminho, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
+    except Exception:
+        pass          # registro nunca pode derrubar a busca
+
+
 @app.post("/api/busca")
 async def busca(p: Pergunta):
     inicio = time.time()
@@ -119,12 +153,15 @@ async def busca(p: Pergunta):
     # que o professor escreveu
     resultado = dict(resultado, pergunta=p.pergunta)
     resposta = montar_resposta(resultado, p.nome, guiada=guiada)
+    ms = int((time.time() - inicio) * 1000)
+    registrar(p.pergunta, p.nome, resultado, resposta, ms)
     return {
         **resposta,
         "filtros": resultado["filtros"],
         "confiante": resultado["confiante"],
         "cobertura": resultado.get("cobertura"),
-        "ms": int((time.time() - inicio) * 1000),
+        "assunto": resultado.get("assunto"),
+        "ms": ms,
     }
 
 

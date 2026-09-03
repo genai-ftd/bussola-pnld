@@ -235,6 +235,57 @@ A copy vale para as duas camadas: o build embute essas listas na página publica
 
 ---
 
+## Registro das sessões de teste
+
+Cada pergunta e o que a busca devolveu ficam registrados, para a rodada de teste
+render dado em vez de impressão.
+
+**Na página publicada** (que é estática e não tem servidor): o registro fica no
+navegador do testador. O botão **Registro** no cabeçalho do chat mostra quantas
+perguntas foram feitas e baixa um **CSV** — separado por `;` e com BOM, então o
+Excel em português e o Google Sheets abrem já nas colunas certas. Uma linha por
+pergunta, com os três resultados achatados:
+
+`sessao · momento · nome · pergunta · assunto · confianca · cobertura · ms ·
+filtro_ano · filtro_disciplina · filtro_colecao · n_resultados · resposta ·
+r1_obra · r1_pagina · r1_cobertura · r1_link · r1_trecho · r2_… · r3_…`
+
+Se o download for bloqueado no ambiente, `bussolaRegistro.csv()` no console
+devolve o mesmo conteúdo, e `bussolaRegistro.linhas` devolve o JSON cru.
+
+**Planilha viva, sem o testador exportar nada.** Publique um Google Apps Script
+como *web app* (executar como você, acesso a qualquer pessoa) com algo assim:
+
+```javascript
+function doPost(e) {
+  const d = JSON.parse(e.postData.contents);
+  const aba = SpreadsheetApp.getActiveSheet();
+  const r = d.resultados || [];
+  aba.appendRow([d.momento, d.sessao, d.nome, d.pergunta, d.assunto, d.confianca,
+                 d.cobertura, d.ms, d.n_resultados, d.resposta,
+                 (r[0]||{}).obra, (r[0]||{}).pagina, (r[0]||{}).link,
+                 (r[1]||{}).obra, (r[2]||{}).obra]);
+  return ContentService.createTextOutput("ok");
+}
+```
+
+Depois é só definir a URL antes do script principal na página:
+
+```html
+<script>window.BUSSOLA_LOG_URL = "https://script.google.com/macros/s/SEU_ID/exec";</script>
+```
+
+Cada pergunta passa a ser enviada na hora, e o registro local continua valendo
+como cópia de segurança.
+
+**Rodando local**, a API grava sozinha em `data/registros/AAAA-MM-DD.jsonl`, uma
+linha JSON por pergunta — fora do controle de versão.
+
+⚠️ O registro inclui o nome que o professor digita no chat. Para uma rodada
+interna tudo bem; se for sair da FTD, tire o campo `nome` antes.
+
+---
+
 ## Limitações conhecidas
 
 **1. A API do Issuu não entrega o conteúdo das páginas.**
