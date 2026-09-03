@@ -16,6 +16,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from dotenv import load_dotenv
+
 from api.confianca import LIMIAR_ALTO, LIMIAR_BAIXO
 from api import responder
 from api.guiadas import GUIADAS
@@ -132,6 +134,7 @@ def frequencia_documento(b):
 
 
 def main():
+    load_dotenv(os.path.join(RAIZ, ".env"))
     print("Carregando o motor completo…")
     b = Buscador()
     obras, trechos, mapa = exportar_dados(b)
@@ -172,7 +175,18 @@ def main():
     html = html.replace('url("assets/portal-pnld.jpg")',
                         'url("data:image/jpeg;base64,{}")'.format(img))
 
-    injecao = (
+    # Endpoint de registro, opcional: definido em .env, entra na página; ausente,
+    # a página só grava no navegador. Assim ligar a planilha não pede mexer no
+    # código, só `BUSSOLA_LOG_URL=... && python scripts/build_static_demo.py`.
+    log_url = os.environ.get("BUSSOLA_LOG_URL", "").strip()
+    injecao = ""
+    if log_url:
+        injecao += "<script>window.BUSSOLA_LOG_URL={};</script>\n".format(
+            json.dumps(log_url))
+        print("registro remoto ligado: {}".format(log_url))
+    else:
+        print("registro remoto desligado (defina BUSSOLA_LOG_URL no .env para ligar)")
+    injecao += (
         "<script>window.BUSSOLA_DADOS=" + blob + ";</script>\n"
         "<script>" + motor + "</script>\n"
     )

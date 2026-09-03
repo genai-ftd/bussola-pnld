@@ -265,30 +265,47 @@ O registro vive no `localStorage` do navegador de cada testador: é por aparelho
 sobrevive a recarregar a página e some se a pessoa limpar os dados do site. Para
 juntar tudo num lugar só, use o envio abaixo.
 
-**Planilha viva, sem o testador exportar nada.** Publique um Google Apps Script
-como *web app* (executar como você, acesso a qualquer pessoa) com algo assim:
+### Planilha viva, sem o testador exportar nada
 
-```javascript
-function doPost(e) {
-  const d = JSON.parse(e.postData.contents);
-  const aba = SpreadsheetApp.getActiveSheet();
-  const r = d.resultados || [];
-  aba.appendRow([d.momento, d.sessao, d.nome, d.pergunta, d.assunto, d.confianca,
-                 d.cobertura, d.ms, d.n_resultados, d.resposta,
-                 (r[0]||{}).obra, (r[0]||{}).pagina, (r[0]||{}).link,
-                 (r[1]||{}).obra, (r[2]||{}).obra]);
-  return ContentService.createTextOutput("ok");
-}
+Com isto, cada pergunta cai numa planilha do Google na hora. São sete passos e
+não precisa saber programar — o código já está pronto em
+[`scripts/planilha/registro.gs`](scripts/planilha/registro.gs).
+
+1. Crie uma **planilha nova** no Google Sheets. Pode deixar vazia; as colunas
+   são criadas sozinhas na primeira pergunta.
+2. Nessa planilha, menu **Extensões → Apps Script**. Abre um editor de código
+   numa aba nova.
+3. Apague o `function myFunction() {}` que vem de exemplo e **cole todo o
+   conteúdo** de `scripts/planilha/registro.gs`. Salve (o disquete, ou ⌘S).
+4. Botão azul **Implantar → Nova implantação**.
+5. Na engrenagem ao lado de "Selecione o tipo", escolha **App da Web**. Depois:
+   - *Executar como*: **Eu**
+   - *Quem pode acessar*: **Qualquer pessoa**
+
+   Esse segundo campo precisa ser "Qualquer pessoa" mesmo, não "qualquer pessoa
+   com conta do Google": a página manda os dados sem ninguém estar logado.
+6. **Implantar**. O Google vai pedir autorização e mostrar um aviso de "app não
+   verificado" — é o seu próprio script. Clique em **Avançado → Acessar
+   (nome do projeto)** e autorize.
+7. Copie a **URL do app da Web** (termina em `/exec`).
+
+Com a URL na mão, ligue na página:
+
+```bash
+echo 'BUSSOLA_LOG_URL=https://script.google.com/macros/s/SEU_ID/exec' >> .env
+.venv/bin/python scripts/build_static_demo.py
+git add index.html && git commit -m "Liga o registro na planilha" && git push
 ```
 
-Depois é só definir a URL antes do script principal na página:
+O build avisa `registro remoto ligado` quando pega a URL. Para conferir se
+subiu, abra a URL do `/exec` no navegador: deve responder *"Bússola PNLD:
+endpoint de registro no ar."*.
 
-```html
-<script>window.BUSSOLA_LOG_URL = "https://script.google.com/macros/s/SEU_ID/exec";</script>
-```
-
-Cada pergunta passa a ser enviada na hora, e o registro local continua valendo
-como cópia de segurança.
+**Cuidados.** Quem tiver a URL consegue escrever na planilha — não publique num
+lugar aberto. Se quiser travar, preencha `SEGREDO` no topo do script e me avise
+para a página mandar o mesmo valor. Para trocar o código depois, use
+**Implantar → Gerenciar implantações → editar → Nova versão**, senão a URL
+antiga continua rodando o código antigo.
 
 **Rodando local**, a API grava sozinha em `data/registros/AAAA-MM-DD.jsonl`, uma
 linha JSON por pergunta — fora do controle de versão.
