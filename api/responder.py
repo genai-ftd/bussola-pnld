@@ -42,8 +42,13 @@ SEM_RESULTADO_COM_TERMO = [
     "da BNCC?",
     "{nome}, {termo} não aparece em nenhuma página do que eu tenho indexado. Se "
     "for outro nome para a mesma coisa, me diz que eu procuro de novo.",
-    "Procurei {termo} e não encontrei. O acervo indexado ainda é uma amostra: "
-    "Língua Portuguesa, Língua Espanhola e Arte dos Anos Iniciais.",
+    # Sem enumerar disciplinas: a lista que estava aqui foi escrita quando o
+    # acervo tinha 5 obras e continuou dizendo "Língua Portuguesa, Espanhola e
+    # Arte" depois que virou 13, com nove componentes. Copy não afirma fato que
+    # muda sem ela saber.
+    "Procurei {termo} e não encontrei. O acervo indexado ainda é uma amostra "
+    "do PNLD 2027, então pode ser que o tema esteja numa obra que ainda não "
+    "entrou.",
     "{termo} não está nas obras que eu tenho aqui, {nome}. Pode ser que esteja "
     "num volume que ainda não entrou no índice.",
 ]
