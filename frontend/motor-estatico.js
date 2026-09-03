@@ -81,6 +81,30 @@ window.BUSSOLA_ESTATICO = (function(){
     return null;
   }
 
+  /* Separa o assunto da moldura do pedido. "Quero pesquisar sobre Sistema
+     Solar" precisa virar "Sistema Solar": sem isto, "pesquisar" entra como
+     termo e a Bússola vai atrás do verbo dentro dos livros. */
+  var VERBOS_PEDIDO = "(?:(?:pesquis|busc|procur|sab|conhec|ach|encontr|consult|"
+    + "localiz|mostr|indic|suger|fal|explic|ajud|trat)(?:ar|er|ir|ando|endo|indo|a|e|o)"
+    + "|ver|vendo|vejo|dizer|dar)";
+  var INICIO_PEDIDO = new RegExp("^\\s*(?:(?:eu|voce|vc)\\s+)?"
+    + "(?:(?:quero|queria|gostaria(?:\\s+de)?|preciso|pode|poderia|podes|me|"
+    + "estou|to|tou|ando|o\\s+que|oque|qual|quais|onde|tem|tens|existe|ha|"
+    + "a|de|para|pra|que)\\s+)*"
+    + "(?:" + VERBOS_PEDIDO + "\\s+)*", "i");
+  var MARCADOR_ASSUNTO = /\b(?:sobre|a\s+respeito\s+de|acerca\s+de|referente\s+a)\b/i;
+
+  function extrairAssunto(pergunta){
+    var texto = (pergunta || "").trim();
+    var m = MARCADOR_ASSUNTO.exec(texto);
+    if(m){
+      var depois = texto.slice(m.index + m[0].length).replace(/^[\s,:;?!]+|[\s,:;?!]+$/g, "");
+      if(depois) return depois;
+    }
+    var cortado = texto.replace(INICIO_PEDIDO, "").replace(/^[\s,:;?!]+|[\s,:;?!]+$/g, "");
+    return cortado || texto;
+  }
+
   var EXPRESSOES_FILTRO = [
     /\b[1-5]\s*(?:o|a)?\s*(?:ano|serie)\b/g,
     /\b(?:volume|vol)\s*[1-5]\b/g,
@@ -99,8 +123,9 @@ window.BUSSOLA_ESTATICO = (function(){
   }
 
   function tokensDaPergunta(pergunta){
-    var t = tokenizar(removerTermosDeFiltro(pergunta));
-    return t.length ? t : tokenizar(pergunta);
+    var assunto = extrairAssunto(pergunta);
+    var t = tokenizar(removerTermosDeFiltro(assunto));
+    return t.length ? t : tokenizar(assunto);
   }
 
   function filtrosDa(pergunta){
@@ -113,19 +138,41 @@ window.BUSSOLA_ESTATICO = (function(){
 
   /* ------------------ confiança (espelho de confianca.py) ---------------- */
 
-  function idf(termo){
+  function idfTermo(termo){
     var df = D.df[termo] || 0;
     return Math.log(1 + (D.n - df + 0.5) / (df + 0.5));
   }
 
-  function cobertura(tokensPergunta, tokensTrecho){
-    var termos = {}, presentes = {}, i, total = 0, obtido = 0;
-    for(i = 0; i < tokensPergunta.length; i++) termos[tokensPergunta[i]] = 1;
+  /* As unidades da pergunta são as palavras E os pares adjacentes. O par é o
+     que distingue composto de coincidência: "sistema solar" não existe em
+     nenhuma página, mas "solar" existe — em "filtro solar". Sem o par, a
+     pergunta sobre astronomia casava com protetor solar. */
+  function unidadesDaPergunta(tokens){
+    var vistos = {}, saida = [], i;
+    for(i = 0; i < tokens.length; i++){
+      if(vistos[tokens[i]]) continue;
+      vistos[tokens[i]] = 1;
+      saida.push([tokens[i], null, idfTermo(tokens[i])]);
+    }
+    for(i = 0; i + 1 < tokens.length; i++){
+      var df = trechosComFrase(tokens[i], tokens[i + 1]).length;
+      saida.push([tokens[i], tokens[i + 1],
+                  Math.log(1 + (D.n - df + 0.5) / (df + 0.5))]);
+    }
+    return saida;
+  }
+
+  function cobertura(unidades, tokensTrecho){
+    if(!unidades.length) return 0;
+    var presentes = {}, pares = {}, i;
     for(i = 0; i < tokensTrecho.length; i++) presentes[tokensTrecho[i]] = 1;
-    for(var t in termos){
-      var peso = idf(t);
-      total += peso;
-      if(presentes[t]) obtido += peso;
+    for(i = 0; i + 1 < tokensTrecho.length; i++) pares[tokensTrecho[i] + "\u0000" + tokensTrecho[i + 1]] = 1;
+    var total = 0, obtido = 0;
+    for(i = 0; i < unidades.length; i++){
+      var u = unidades[i];
+      total += u[2];
+      var achou = u[1] === null ? presentes[u[0]] : pares[u[0] + "\u0000" + u[1]];
+      if(achou) obtido += u[2];
     }
     return total > 0 ? obtido / total : 0;
   }
@@ -155,9 +202,11 @@ window.BUSSOLA_ESTATICO = (function(){
   function construirIndice(){
     var docs = D.trechos, N = docs.length, i, j, t;
     var tfs = new Array(N), tamanhos = new Float32Array(N), soma = 0, dfLocal = {};
+    var tokensPorDoc = new Array(N);
 
     for(i = 0; i < N; i++){
       var toks = tokenizar(docs[i][3]), tf = {};
+      tokensPorDoc[i] = toks;
       for(j = 0; j < toks.length; j++) tf[toks[j]] = (tf[toks[j]] || 0) + 1;
       tfs[i] = tf;
       tamanhos[i] = toks.length;
@@ -177,7 +226,26 @@ window.BUSSOLA_ESTATICO = (function(){
         (postings[t] || (postings[t] = [])).push([d, peso * f * (K1 + 1) / (f + K1 * norma)]);
       }
     }
-    indice = { postings: postings, n: N };
+    indice = { postings: postings, n: N, tokens: tokensPorDoc };
+  }
+
+  var memoFrase = {};
+
+  /* Índices dos trechos em que o par aparece colado. Varremos as listas de
+     tokens em vez de embutir um mapa de ~500 mil bigramas na página. */
+  function trechosComFrase(a, b){
+    var chave = a + "\u0000" + b;
+    if(memoFrase[chave]) return memoFrase[chave];
+    if(!indice) construirIndice();
+    var achados = [];
+    for(var d = 0; d < indice.n; d++){
+      var toks = indice.tokens[d];
+      for(var i = 0; i + 1 < toks.length; i++){
+        if(toks[i] === a && toks[i + 1] === b){ achados.push(d); break; }
+      }
+    }
+    memoFrase[chave] = achados;
+    return achados;
   }
 
   function bm25(tokens){
@@ -425,19 +493,31 @@ window.BUSSOLA_ESTATICO = (function(){
 
         // 3. pergunta livre: BM25 + a mesma ancoragem lexical do motor local
         var pontos = bm25(tokens);
-        if(!pontos){
-          resolve(montarResposta(pergunta, nome, filtros, [], tokens));
-          return;
-        }
+        if(!pontos) pontos = new Float32Array(indice ? indice.n : 0);
         // a cobertura ordena, não só decide confiança: uma página que contém o
         // que foi perguntado é melhor resposta que uma que só se parece
+        // terceiro canal: quem traz a expressão colada entra no pool mesmo que
+        // as duas palavras sejam comuns demais para o BM25 destacar
+        var elegivel = {}, i;
+        for(i = 0; i < pontos.length; i++) if(pontos[i] > 0) elegivel[i] = pontos[i];
+        for(i = 0; i + 1 < tokens.length; i++){
+          var achados = trechosComFrase(tokens[i], tokens[i + 1]);
+          for(var j = 0; j < achados.length; j++){
+            if(!elegivel[achados[j]]) elegivel[achados[j]] = 0.0001;
+          }
+        }
+        var unids = unidadesDaPergunta(tokens);
         var candidatos = [], cobs = {};
-        for(var i = 0; i < pontos.length; i++){
-          if(pontos[i] <= 0) continue;
-          var cob = cobertura(tokens, tokenizar(D.trechos[i][3]));
-          cobs[i] = cob;
-          candidatos.push([pontos[i] * fatorMetadado(D.obras[D.trechos[i][0]], filtros)
-                           * (1 + PESO_ANCORAGEM * cob), i]);
+        for(var chave in elegivel){
+          var d = +chave;
+          var cob = cobertura(unids, indice.tokens[d]);
+          cobs[d] = cob;
+          candidatos.push([elegivel[d] * fatorMetadado(D.obras[D.trechos[d][0]], filtros)
+                           * (1 + PESO_ANCORAGEM * cob), d]);
+        }
+        if(!candidatos.length){
+          resolve(montarResposta(pergunta, nome, filtros, [], tokens));
+          return;
         }
         candidatos.sort(function(a, b){ return b[0] - a[0]; });
         escolhidos = diversificar(candidatos.slice(0, 200), 3, 3);

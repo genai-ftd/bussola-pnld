@@ -42,6 +42,8 @@ DENTRO = [
     "trabalhar o gênero receita",
     # o acervo tem aula do gênero receita (receita=24, bolo=7, chocolate=9)
     "receita de bolo de chocolate",
+    # a expressão "festa junina" aparece colada em uma página
+    "festa junina",
     "como desenvolver a escrita autônoma",
     "temas contemporâneos transversais",
 ]
@@ -51,7 +53,6 @@ FORA = [
     "Páscoa",
     "atividades sobre a Páscoa",
     "como trabalhar a Páscoa em sala de aula",
-    "festa junina",
     "programação em python",
     "tabuada de multiplicação",
     "campeonato brasileiro de futebol",

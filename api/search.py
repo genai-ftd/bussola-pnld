@@ -16,9 +16,9 @@ import re
 import numpy as np
 
 from api import confianca
-from api.confianca import cobertura, faixa, termos_ausentes
-from ingest.metadata import (norm, parse_pergunta, remover_termos_de_filtro,
-                             titulo_curto)
+from api.confianca import cobertura, termos_ausentes, unidades
+from ingest.metadata import (extrair_assunto, norm, parse_pergunta,
+                             remover_termos_de_filtro, titulo_curto)
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIR_INDICE = os.path.join(RAIZ, "data", "index")
@@ -141,6 +141,7 @@ class Buscador:
         self.tokens_chunk = [tokenizar(c["texto"]) for c in self.chunks]
         self.bm25 = IndiceBM25(self.tokens_chunk)
         self.repeticoes = self._contar_repeticoes()
+        self._memo_bigrama = {}
         self.obras_indexadas = len({c["obra_id"] for c in self.chunks}) or 1
 
     # ------------------------------------------------------------------ carga
@@ -169,6 +170,27 @@ class Buscador:
             contagem[(c["obra_id"], c["texto"])] = contagem.get((c["obra_id"], c["texto"]), 0) + 1
         return [contagem[(c["obra_id"], c["texto"])] for c in self.chunks]
 
+    def trechos_com_frase(self, a, b):
+        """Índices dos trechos em que o par aparece colado.
+
+        Varremos as listas de tokens em vez de manter um índice de bigramas: são
+        ~500 mil pares no acervo, e o mapa teria de ser embutido também na página
+        publicada. A varredura custa poucos milissegundos e é memoizada por par.
+        """
+        chave = (a, b)
+        if chave not in self._memo_bigrama:
+            achados = []
+            for idx, tokens in enumerate(self.tokens_chunk):
+                for i in range(len(tokens) - 1):
+                    if tokens[i] == a and tokens[i + 1] == b:
+                        achados.append(idx)
+                        break
+            self._memo_bigrama[chave] = achados
+        return self._memo_bigrama[chave]
+
+    def df_bigrama(self, a, b):
+        return len(self.trechos_com_frase(a, b))
+
     # ------------------------------------------------------------------ busca
     def _fator_metadado(self, obra, filtros):
         fator = 1.0
@@ -191,8 +213,11 @@ class Buscador:
 
     def buscar(self, pergunta: str, principais: int = 3, extras: int = 3):
         filtros = parse_pergunta(pergunta)
+        # "Quero pesquisar sobre Sistema Solar" vira "Sistema Solar": a moldura
+        # do pedido não é assunto e não pode ser procurada dentro dos livros
+        assunto = extrair_assunto(pergunta)
 
-        vetor = self.modelo.encode([pergunta], convert_to_numpy=True,
+        vetor = self.modelo.encode([assunto], convert_to_numpy=True,
                                    normalize_embeddings=True).astype("float32")[0]
         similaridades = self.embeddings @ vetor
         # argpartition acha os POOL maiores sem ordenar o vetor inteiro: o custo
@@ -205,23 +230,35 @@ class Buscador:
 
         # o que já virou filtro não compete de novo como termo de busca;
         # se sobrar nada ("língua portuguesa" inteira é filtro), volta ao original
-        tokens = tokenizar(remover_termos_de_filtro(pergunta)) or tokenizar(pergunta)
+        tokens = tokenizar(remover_termos_de_filtro(assunto)) or tokenizar(assunto)
         top_lexico = self.bm25.top(tokens, POOL) if tokens else []
 
+        # Terceiro canal: busca por frase. "atividades de leitura" tem as duas
+        # palavras comuns demais para o BM25 destacar, então a página que traz a
+        # expressão colada nem chegava a ser candidata — e a cobertura, que só
+        # pontua o que está no pool, não tinha o que promover.
+        top_frase = []
+        for a, b in zip(tokens, tokens[1:]):
+            achados = self.trechos_com_frase(a, b)
+            if achados and len(achados) <= POOL:
+                top_frase.extend(sorted(achados, key=lambda i: -similaridades[i]))
+
         fundido = _rrf(list(top_denso))
-        for idx, valor in _rrf(list(top_lexico)).items():
-            fundido[idx] = fundido.get(idx, 0.0) + valor
+        for lista in (list(top_lexico), top_frase[:POOL]):
+            for idx, valor in _rrf(lista).items():
+                fundido[idx] = fundido.get(idx, 0.0) + valor
 
         # A cobertura lexical não serve só para decidir se respondemos: uma página
         # que contém o que foi perguntado é melhor resposta que uma que só se
         # parece com a pergunta no espaço vetorial. Sem isto a busca achava a
         # página exata pelo BM25 e a descartava na hora de ordenar.
+        unidades_pergunta = unidades(tokens, self.bm25.df, self.bm25.n, self.df_bigrama)
         self._cobertura_cache = {}
         classificados = []
         for idx, base in fundido.items():
             chunk = self.chunks[idx]
             obra = self.catalogo.get(chunk["obra_id"], {})
-            cob = cobertura(tokens, self.tokens_chunk[idx], self.bm25.df, self.bm25.n)
+            cob = cobertura(unidades_pergunta, self.tokens_chunk[idx])
             self._cobertura_cache[idx] = cob
             pontuacao = (base + PESO_DENSO * max(float(similaridades[idx]), 0.0)) \
                 * self._fator_metadado(obra, filtros) \
@@ -243,6 +280,7 @@ class Buscador:
         ancorados = [r for r in selecionados if r["cobertura"] >= baixo]
         return {
             "pergunta": pergunta,
+            "assunto": assunto,
             "filtros": filtros,
             "confianca": confianca_faixa,
             "cobertura": round(melhor, 4),

@@ -104,6 +104,51 @@ def parse_obra(title: str, filename: str = "") -> dict:
     }
 
 
+# Moldura do pedido: o que vem antes do assunto de verdade. Só é removida no
+# INÍCIO da pergunta — "atividades de pesquisa com os estudantes" é assunto
+# legítimo e não pode ser desmontado só porque contém "pesquisa".
+# radicais + terminações, para pegar infinitivo e gerúndio ("procurar",
+# "procurando") sem precisar listar cada conjugação
+_VERBOS_PEDIDO = (r"(?:pesquis|busc|procur|sab|conhec|ach|encontr|consult|"
+                  r"localiz|mostr|indic|suger|fal|explic|ajud|trat)"
+                  r"(?:ar|er|ir|ando|endo|indo|a|e|o)"
+                  r"|ver|vendo|vejo|dizer|dar")
+_INICIO_PEDIDO = re.compile(
+    r"^\s*(?:(?:eu|voce|vc)\s+)?"
+    r"(?:(?:quero|queria|gostaria(?:\s+de)?|preciso|pode|poderia|podes|me|"
+    r"estou|to|tou|ando|o\s+que|oque|qual|quais|onde|tem|tens|existe|ha|"
+    r"a|de|para|pra|que)\s+)*"
+    r"(?:(?:" + _VERBOS_PEDIDO + r")(?:ndo|r)?\s+)*",
+    re.I)
+# Marcador que separa moldura de assunto sem ambiguidade nenhuma
+_MARCADOR_ASSUNTO = re.compile(
+    r"\b(?:sobre|a\s+respeito\s+de|acerca\s+de|referente\s+a|em\s+rela[cç][aã]o\s+a)\b",
+    re.I)
+
+
+def extrair_assunto(pergunta: str) -> str:
+    """Separa o assunto da moldura do pedido.
+
+    "Quero pesquisar sobre Sistema Solar" precisa virar "Sistema Solar": sem
+    isto, "pesquisar" entra como termo de busca e a Bússola vai atrás do verbo
+    dentro dos livros.
+
+    Duas regras, nesta ordem:
+      1. se houver marcador ("sobre", "a respeito de"), o assunto é o que vem
+         depois dele — é o separador mais confiável do português;
+      2. senão, corta a moldura só do começo da frase.
+    Se sobrar vazio, devolve a pergunta inteira.
+    """
+    texto = (pergunta or "").strip()
+    marcador = _MARCADOR_ASSUNTO.search(texto)
+    if marcador:
+        assunto = texto[marcador.end():].strip(" ,:;?!")
+        if assunto:
+            return assunto
+    assunto = _INICIO_PEDIDO.sub("", texto, count=1).strip(" ,:;?!")
+    return assunto or texto
+
+
 _EXPRESSOES_FILTRO = [
     r"\b[1-5]\s*(?:o|a)?\s*(?:ano|serie)\b",
     r"\b(?:volume|vol)\s*[1-5]\b",
