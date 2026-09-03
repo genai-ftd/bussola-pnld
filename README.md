@@ -241,17 +241,29 @@ Cada pergunta e o que a busca devolveu ficam registrados, para a rodada de teste
 render dado em vez de impressão.
 
 **Na página publicada** (que é estática e não tem servidor): o registro fica no
-navegador do testador. O botão **Registro** no cabeçalho do chat mostra quantas
-perguntas foram feitas e baixa um **CSV** — separado por `;` e com BOM, então o
-Excel em português e o Google Sheets abrem já nas colunas certas. Uma linha por
-pergunta, com os três resultados achatados:
+navegador do testador, e ele não vê nada disso — nenhum botão, nenhum aviso.
+
+Para a equipe pegar os dados, dois caminhos:
+
+- abrir a página com **`?registro`** na URL
+  (`https://genai-ftd.github.io/bussola-pnld/?registro`), o que revela um botão
+  **Registro** no cabeçalho do chat com a contagem e o download;
+- ou `bussolaRegistro.baixar()` no console, que faz a mesma coisa.
+
+O arquivo é um **CSV** separado por `;` e com BOM, então o Excel em português e o
+Google Sheets abrem já nas colunas certas. Uma linha por pergunta, com os três
+resultados achatados:
 
 `sessao · momento · nome · pergunta · assunto · confianca · cobertura · ms ·
 filtro_ano · filtro_disciplina · filtro_colecao · n_resultados · resposta ·
 r1_obra · r1_pagina · r1_cobertura · r1_link · r1_trecho · r2_… · r3_…`
 
-Se o download for bloqueado no ambiente, `bussolaRegistro.csv()` no console
-devolve o mesmo conteúdo, e `bussolaRegistro.linhas` devolve o JSON cru.
+Se o download for bloqueado no ambiente, `bussolaRegistro.csv()` devolve o mesmo
+conteúdo como texto, e `bussolaRegistro.linhas` devolve o JSON cru.
+
+O registro vive no `localStorage` do navegador de cada testador: é por aparelho,
+sobrevive a recarregar a página e some se a pessoa limpar os dados do site. Para
+juntar tudo num lugar só, use o envio abaixo.
 
 **Planilha viva, sem o testador exportar nada.** Publique um Google Apps Script
 como *web app* (executar como você, acesso a qualquer pessoa) com algo assim:

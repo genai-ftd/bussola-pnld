@@ -163,7 +163,8 @@
       <p>Encontre o conteúdo dentro das obras</p>
     </div>
     <div class="acoes">
-      <button class="registro" id="baixarRegistro" title="Baixar o registro desta sessão">
+      <button class="registro" id="baixarRegistro" hidden
+              title="Baixar o registro desta sessão">
         Registro <span id="contadorRegistro">0</span>
       </button>
       <button class="fechar" id="fechar" aria-label="Fechar">&times;</button>
@@ -918,6 +919,15 @@ window.BUSSOLA_ESTATICO = (function(){
       } catch(e) {}
     },
 
+    /* O registro é para a equipe, não para quem está testando: o botão fica
+       escondido e só aparece quando a página é aberta com ?registro na URL.
+       Quem preferir o console tem window.bussolaRegistro sempre disponível. */
+    revelarSePedido: function(){
+      if(!/[?&]registro\b/.test(location.search)) return;
+      var botao = document.getElementById("baixarRegistro");
+      if(botao) botao.hidden = false;
+    },
+
     pintarContador: function(){
       var alvo = document.getElementById("contadorRegistro");
       if(alvo) alvo.textContent = this.linhas.length;
@@ -1033,6 +1043,7 @@ window.BUSSOLA_ESTATICO = (function(){
   function fechar(){ document.body.classList.remove("aberto"); }
 
   registro.carregar();
+  registro.revelarSePedido();
 
   el.fab.onclick = abrir;
   el.fechar.onclick = fechar;
