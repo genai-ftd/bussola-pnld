@@ -31,6 +31,9 @@ CASOS = [
     ("partes do corpo", "Ana", "Língua Inglesa", "componente + nome"),
     ("programação em python", "", "", "fora do acervo"),
     ("atividades de leitura para o 3º ano", "", "", "busca temática"),
+    ("fontes de luz", "", "", "sinônimo: alcança 'fontes luminosas'"),
+    ("cantiga popular", "", "", "sinônimo: singular alcança plural"),
+    ("Páscoa", "", "", "não corrige para nome próprio"),
 ]
 
 DOM_FALSO = """

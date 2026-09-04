@@ -14,6 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from api.guiadas import detectar as detectar_guiada
 from api.search import Buscador
 
 # Conjunto rotulado com evidência, não com palpite: cada pergunta foi conferida
@@ -98,7 +99,12 @@ def main():
         alto, baixo = confianca.LIMIAR_ALTO, confianca.LIMIAR_BAIXO
         confianca.LIMIAR_ALTO = confianca.LIMIAR_BAIXO = -1.0
         try:
-            r = b.buscar(pergunta, principais=3, extras=3)
+            # o mesmo roteamento da API: pergunta sobre a coleção vai para a
+            # resposta guiada, senão o harness reprova uma pergunta que na
+            # prática é respondida
+            guiada = detectar_guiada(pergunta)
+            r = b.buscar(guiada["consulta"] if guiada else pergunta,
+                         principais=3, extras=3)
         finally:
             confianca.LIMIAR_ALTO, confianca.LIMIAR_BAIXO = alto, baixo
         return max([x["cobertura"] for x in r["principais"]], default=0.0)

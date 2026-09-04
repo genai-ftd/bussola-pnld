@@ -180,6 +180,9 @@ def main():
         "banco": banco,
         "guiadas": guiadas,
         "df": frequencia_documento(b),
+        # só os sinônimos dos termos que o professor pode digitar; a tabela
+        # inteira dobraria o tamanho da página sem ganho
+        "sinonimos": {t: v[:2] for t, v in b.sinonimos.items()},
         "disciplinas": nomes_disciplinas,
         "voto_disciplina": votos_disciplina,
         "dominio_disciplina": DOMINIO_MINIMO,

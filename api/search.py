@@ -186,6 +186,7 @@ class Buscador:
         # tabela termo -> disciplina, medida no próprio acervo (ver disciplinas.py)
         self.tabela_disciplinas = mod_disciplinas.construir_tabela(
             self.tokens_chunk, self.disciplina_chunk)
+        self.sinonimos = self._ler_sinonimos()
         self.indice_codigos = mod_referencia.indexar_codigos(self.tokens_chunk)
         self.obras_indexadas = len({c["obra_id"] for c in self.chunks}) or 1
 
@@ -202,6 +203,29 @@ class Buscador:
             raise RuntimeError("índice não encontrado. Rode `python ingest/build_index.py`.")
         with open(caminho, encoding="utf-8") as fh:
             return [json.loads(linha) for linha in fh if linha.strip()]
+
+    @staticmethod
+    def _ler_sinonimos():
+        """Tabela gerada por ingest/build_sinonimos.py; ausente, a busca segue
+        funcionando sem sinônimo nenhum."""
+        caminho = os.path.join(DIR_INDICE, "sinonimos.json")
+        if not os.path.exists(caminho):
+            return {}
+        with open(caminho, encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def expandir(self, tokens):
+        """Termos da pergunta mais os parentes deles, para a recuperação.
+
+        Sem isto a página que escreve "leituras" nem entra no bolo de
+        candidatos, e a cobertura nunca chega a vê-la.
+        """
+        saida = list(tokens)
+        for t in tokens:
+            for parente in self.sinonimos.get(t, ())[:2]:
+                if parente not in saida:
+                    saida.append(parente)
+        return saida
 
     @staticmethod
     def _parece_listagem(texto):
@@ -368,7 +392,7 @@ class Buscador:
         # o que já virou filtro não compete de novo como termo de busca;
         # se sobrar nada ("língua portuguesa" inteira é filtro), volta ao original
         tokens = tokenizar(remover_termos_de_filtro(assunto)) or tokenizar(assunto)
-        top_lexico = self.bm25.top(tokens, POOL) if tokens else []
+        top_lexico = self.bm25.top(self.expandir(tokens), POOL) if tokens else []
 
         # Terceiro canal: busca por frase. "atividades de leitura" tem as duas
         # palavras comuns demais para o BM25 destacar, então a página que traz a
@@ -412,7 +436,7 @@ class Buscador:
             chunk = self.chunks[idx]
             obra = self.catalogo.get(chunk["obra_id"], {})
             cob = cobertura(unidades_pergunta, self.tokens_chunk[idx],
-                            self.disciplina_chunk[idx])
+                            self.disciplina_chunk[idx], self.sinonimos)
             self._cobertura_cache[idx] = cob
             pontuacao = (base + PESO_DENSO * max(float(similaridades[idx]), 0.0)) \
                 * self._fator_metadado(obra, filtros) \

@@ -43,6 +43,10 @@ UNIDADE_DISCIPLINA = "__disciplina__"
 # custa 1 resposta boa e 3 recusas corretas — a disciplina é barata de
 # satisfazer e infla pergunta de fora. Em 0,75 ela orienta sem mandar.
 PESO_DISCIPLINA = 0.75
+# Casar pelo sinônimo vale quase tanto quanto casar pela palavra exata — mas não
+# tanto, para a página que usa o termo do professor continuar ganhando da que usa
+# um parente dele.
+PESO_SINONIMO = 0.85
 
 
 
@@ -73,7 +77,8 @@ def unidades(tokens, colados, df, total_documentos, df_bigrama, disciplina=None)
     return saida
 
 
-def cobertura(unidades_pergunta, tokens_trecho, disciplina_trecho=None) -> float:
+def cobertura(unidades_pergunta, tokens_trecho, disciplina_trecho=None,
+              sinonimos=None) -> float:
     """Fração da massa de IDF da pergunta que o trecho realmente atende (0 a 1)."""
     if not unidades_pergunta:
         return 0.0
@@ -82,14 +87,21 @@ def cobertura(unidades_pergunta, tokens_trecho, disciplina_trecho=None) -> float
     total = obtido = 0.0
     for a, b, peso in unidades_pergunta:
         total += peso
+        fator = 1.0
         if a == UNIDADE_DISCIPLINA:
             atendida = (disciplina_trecho == b)
         elif b is None:
-            atendida = a in presentes
+            if a in presentes:
+                atendida, fator = True, 1.0
+            elif sinonimos:
+                # "leituras" atende quem perguntou "leitura"; ver build_sinonimos
+                parentes = sinonimos.get(a) or ()
+                atendida = any(p in presentes for p in parentes)
+                fator = PESO_SINONIMO
         else:
             atendida = (a, b) in pares
         if atendida:
-            obtido += peso
+            obtido += peso * fator
     return obtido / total if total > 0 else 0.0
 
 

@@ -228,8 +228,13 @@ window.BUSSOLA_ESTATICO = (function(){
     };
   }
 
+  // casar pelo parente vale quase tanto quanto pela palavra exata, mas não
+  // tanto: a página que usa o termo do professor continua ganhando
+  var PESO_SINONIMO = 0.85;
   var LETRAS = "abcdefghijklmnopqrstuvwxyz";
-  var DF_MIN_METADE = 2, DF_MIN_EDICAO = 3, TAM_MIN_EDICAO = 5;
+  // ver api/correcao.py: corrigir para termo raro vira correção para nome
+  // próprio — "Páscoa" virava "Pascoal", o músico
+  var DF_MIN_METADE = 5, DF_MIN_EDICAO = 20, TAM_MIN_EDICAO = 5;
 
   /* Espelho de api/correcao.py: "fakenews" não existe no acervo, "fake" e
      "news" existem. O professor não deve levar "não encontrei" por causa de um
@@ -352,11 +357,21 @@ window.BUSSOLA_ESTATICO = (function(){
     for(i = 0; i < unidades.length; i++){
       var u = unidades[i];
       total += u[2];
-      var achou;
-      if(u[0] === "__disciplina__") achou = (disciplinaTrecho === u[1]);
-      else if(u[1] === null) achou = presentes[u[0]];
-      else achou = pares[u[0] + "\u0000" + u[1]];
-      if(achou) obtido += u[2];
+      var achou, fator = 1;
+      if(u[0] === "__disciplina__"){
+        achou = (disciplinaTrecho === u[1]);
+      } else if(u[1] === null){
+        achou = presentes[u[0]];
+        if(!achou && D.sinonimos){
+          // "leituras" atende quem perguntou "leitura"; ver build_sinonimos.py
+          var parentes = D.sinonimos[u[0]] || [];
+          for(var k = 0; k < parentes.length && !achou; k++) achou = presentes[parentes[k]];
+          if(achou) fator = PESO_SINONIMO;
+        }
+      } else {
+        achou = pares[u[0] + "\u0000" + u[1]];
+      }
+      if(achou) obtido += u[2] * fator;
     }
     return total > 0 ? obtido / total : 0;
   }
@@ -757,7 +772,16 @@ window.BUSSOLA_ESTATICO = (function(){
         }
 
         // 3. pergunta livre: BM25 + a mesma ancoragem lexical do motor local
-        var pontos = bm25(tokens);
+        // sem expandir, a página que escreve "leituras" nem entra no bolo
+        var expandidos = tokens.slice();
+        if(D.sinonimos){
+          tokens.forEach(function(t){
+            (D.sinonimos[t] || []).forEach(function(p){
+              if(expandidos.indexOf(p) < 0) expandidos.push(p);
+            });
+          });
+        }
+        var pontos = bm25(expandidos);
         if(!pontos) pontos = new Float32Array(indice ? indice.n : 0);
         // a cobertura ordena, não só decide confiança: uma página que contém o
         // que foi perguntado é melhor resposta que uma que só se parece

@@ -15,8 +15,13 @@ a correção conhece "parlenda" e "multisseriada", que um corretor comum erraria
 """
 LETRAS = "abcdefghijklmnopqrstuvwxyz"
 
-DF_MINIMO_METADE = 2     # cada metade da separação precisa existir de verdade
-DF_MINIMO_EDICAO = 3     # o candidato de correção precisa ser comum o bastante
+DF_MINIMO_METADE = 5     # cada metade da separação precisa existir de verdade
+# Corrigir para um termo raro é como corrigir para um nome próprio: "Páscoa"
+# virava "Pascoal" — o músico Hermeto, que aparece em 4 trechos — e a Bússola
+# respondia com confiança total sobre a página errada. Quem serve de destino de
+# correção precisa ser palavra estabelecida no acervo, não aparição isolada.
+# As correções que queremos preservar vão para termos com 87 e 233 ocorrências.
+DF_MINIMO_EDICAO = 20
 TAMANHO_MINIMO = 5       # abaixo disso, edição de 1 letra vira outra palavra
 
 
