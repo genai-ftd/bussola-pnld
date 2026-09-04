@@ -17,6 +17,7 @@ import numpy as np
 
 from api import confianca
 from api import disciplinas as mod_disciplinas
+from api import correcao as mod_correcao
 from api import referencia as mod_referencia
 from api.confianca import cobertura, termos_ausentes, unidades
 from ingest.metadata import (extrair_assunto, norm, parse_pergunta,
@@ -332,7 +333,22 @@ class Buscador:
         }
 
     def buscar(self, pergunta: str, principais: int = 3, extras: int = 3,
-               componente: str = ""):
+               componente: str = "", _ja_corrigida: bool = False):
+        # Antes de qualquer coisa: o professor escreveu alguma palavra que não
+        # existe no acervo mas se parece com uma que existe? "fakenews" não é
+        # motivo para dizer "não encontrei" — é motivo para perguntar se ele
+        # quis dizer "fake news", como faria qualquer busca decente.
+        if not _ja_corrigida:
+            correcoes = mod_correcao.sugerir(
+                tokenizar(extrair_assunto(pergunta)), self.df_conteudo)
+            if correcoes:
+                corrigida = mod_correcao.aplicar(pergunta, correcoes)
+                resultado = self.buscar(corrigida, principais, extras, componente,
+                                        _ja_corrigida=True)
+                resultado["correcao"] = {"de": pergunta, "para": corrigida}
+                resultado["pergunta"] = pergunta
+                return resultado
+
         filtros = parse_pergunta(pergunta)
         # "Quero pesquisar sobre Sistema Solar" vira "Sistema Solar": a moldura
         # do pedido não é assunto e não pode ser procurada dentro dos livros

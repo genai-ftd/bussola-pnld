@@ -77,6 +77,9 @@ REFERENCIA = "{alvo} aparece em {paginas} {p_palavra}, {obras}."
 REFERENCIA_PARCIAL = (" Estas são as {mostradas} primeiras, em ordem de obra e "
                       "página:")
 REFERENCIA_TODAS = " Estas são todas:"
+# "Você quis dizer X?" — a correção é anunciada, nunca silenciosa: o professor
+# precisa saber que a busca não foi a que ele digitou.
+CORRECAO = "Você quis dizer {corrigida}? "
 SEM_REFERENCIA = ("{nome}, não encontrei {alvo} em nenhuma página das obras "
                   "indexadas. Confira o código — ou pode ser que a obra que o "
                   "traz ainda não esteja no índice.")
@@ -266,6 +269,10 @@ def montar_resposta(resultado, nome=None, acervo_vazio=False, guiada=None):
             "confianca": "referencia",
         }
 
+    correcao = resultado.get("correcao")
+    prefixo = (CORRECAO.format(corrigida=correcao["para"].strip())
+               if correcao else "")
+
     confianca = resultado.get("confianca", "nenhuma")
 
     # 2. nada ancorado no acervo: dizer que não sabe, e dizer o que faltou
@@ -279,7 +286,8 @@ def montar_resposta(resultado, nome=None, acervo_vazio=False, guiada=None):
         else:
             texto = _tratar_vocativo(_escolher(SEM_RESULTADO_GENERICO, pergunta), nome)
         return {
-            "texto": texto,
+            "texto": prefixo + texto,
+            "correcao": correcao,
             "resultados": [],
             "tambem_encontrei": [_cartao(r) for r in vizinhos[:3]],
             "rotulo": ROTULO_VIZINHOS if vizinhos else None,
@@ -299,9 +307,10 @@ def montar_resposta(resultado, nome=None, acervo_vazio=False, guiada=None):
             nome) + _descrever_filtros(resultado.get("filtros", {}))
 
     return {
-        "texto": texto,
+        "texto": prefixo + texto,
         "assunto": resultado.get("assunto", ""),
         "termos": resultado.get("termos", []),
+        "correcao": correcao,
         "resultados": [_cartao(r) for r in principais],
         "tambem_encontrei": [_cartao(r) for r in resultado.get("tambem_encontrei", [])],
         "rotulo": None,

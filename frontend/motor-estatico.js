@@ -228,6 +228,79 @@ window.BUSSOLA_ESTATICO = (function(){
     };
   }
 
+  var LETRAS = "abcdefghijklmnopqrstuvwxyz";
+  var DF_MIN_METADE = 2, DF_MIN_EDICAO = 3, TAM_MIN_EDICAO = 5;
+
+  /* Espelho de api/correcao.py: "fakenews" não existe no acervo, "fake" e
+     "news" existem. O professor não deve levar "não encontrei" por causa de um
+     espaço — deve ver "Você quis dizer fake news?". Só mexe em termo ausente;
+     palavra que existe nunca é corrigida. */
+  function separar(termo){
+    var melhor = null, melhorPeso = 0;
+    for(var i = 3; i < termo.length - 2; i++){
+      var fa = indice.df[termo.slice(0, i)] || 0, fb = indice.df[termo.slice(i)] || 0;
+      if(fa >= DF_MIN_METADE && fb >= DF_MIN_METADE && Math.min(fa, fb) > melhorPeso){
+        melhorPeso = Math.min(fa, fb);
+        melhor = termo.slice(0, i) + " " + termo.slice(i);
+      }
+    }
+    return melhor;
+  }
+
+  function edicoes(termo){
+    var saida = {}, i, c;
+    for(i = 0; i <= termo.length; i++){
+      var a = termo.slice(0, i), b = termo.slice(i);
+      if(b.length){
+        saida[a + b.slice(1)] = 1;
+        if(b.length > 1) saida[a + b[1] + b[0] + b.slice(2)] = 1;
+        for(c = 0; c < LETRAS.length; c++) saida[a + LETRAS[c] + b.slice(1)] = 1;
+      }
+      for(c = 0; c < LETRAS.length; c++) saida[a + LETRAS[c] + b] = 1;
+    }
+    delete saida[termo];
+    return Object.keys(saida);
+  }
+
+  function porEdicao(termo){
+    if(termo.length < TAM_MIN_EDICAO) return null;
+    var candidatos = edicoes(termo).filter(function(c){
+      return (indice.df[c] || 0) >= DF_MIN_EDICAO;
+    });
+    if(!candidatos.length && termo.length >= 7){
+      var vistos = {};
+      edicoes(termo).forEach(function(meio){
+        edicoes(meio).forEach(function(c){
+          if(!vistos[c] && (indice.df[c] || 0) >= DF_MIN_EDICAO){ vistos[c] = 1; candidatos.push(c); }
+        });
+      });
+    }
+    if(!candidatos.length) return null;
+    return candidatos.reduce(function(a, b){
+      return (indice.df[b] || 0) > (indice.df[a] || 0) ? b : a;
+    });
+  }
+
+  function sugerirCorrecao(tokens){
+    if(!indice) construirIndice();
+    var correcoes = {}, achou = false, vistos = {};
+    for(var i = 0; i < tokens.length; i++){
+      var t = tokens[i];
+      if(vistos[t] || (indice.df[t] || 0) > 0) continue;
+      vistos[t] = 1;
+      var alvo = separar(t) || porEdicao(t);
+      if(alvo){ correcoes[t] = alvo; achou = true; }
+    }
+    return achou ? correcoes : null;
+  }
+
+  function aplicarCorrecao(pergunta, correcoes){
+    return pergunta.replace(/[\wÀ-ÿ]+/g, function(p){
+      var chave = semAcento(p).toLowerCase();
+      return correcoes[chave] || p;
+    });
+  }
+
   function inferirDisciplina(tokens){
     if(!D.voto_disciplina) return null;
     var votos = {}, vistos = {}, total = 0, i;
@@ -626,10 +699,26 @@ window.BUSSOLA_ESTATICO = (function(){
 
   /* -------------------------------- busca -------------------------------- */
 
-  function buscar(pergunta, nome, componente){
+  function buscar(pergunta, nome, componente, jaCorrigida){
     return new Promise(function(resolve){
       // deixa o "digitando…" pintar antes do primeiro cálculo, que monta o índice
       setTimeout(function(){
+        // antes de tudo: o professor escreveu algo que não existe mas se parece
+        // com o que existe? corrige e avisa, em vez de recusar
+        if(!jaCorrigida){
+          if(!indice) construirIndice();
+          var correcoes = sugerirCorrecao(tokenizar(extrairAssunto(pergunta)));
+          if(correcoes){
+            var corrigida = aplicarCorrecao(pergunta, correcoes);
+            buscar(corrigida, nome, componente, true).then(function(r){
+              r.texto = preencher(D.copy.correcao, { corrigida: corrigida.trim() }) + r.texto;
+              r.correcao = { de: pergunta, para: corrigida };
+              resolve(r);
+            });
+            return;
+          }
+        }
+
         var ref = detectarReferencia(pergunta);
         if(ref && !detectarGuiada(pergunta)){
           resolve(montarRespostaReferencia(buscarReferencia(ref, pergunta), nome));

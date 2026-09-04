@@ -125,10 +125,14 @@
   /* ---------- caixa de escrita ---------- */
   .escrita{display:flex;flex-wrap:wrap;gap:8px;padding:12px;background:var(--papel);
     border-top:1px solid var(--borda);flex:none}
-  .escrita select{flex:1 0 100%;border:1px solid var(--borda);border-radius:10px;
+  .controles{flex:1 0 100%;display:flex;gap:8px}
+  .controles input,.controles select{border:1px solid var(--borda);border-radius:10px;
     padding:9px 11px;font-size:.78rem;color:var(--tinta-suave);background:var(--painel);
-    font-family:var(--ui);cursor:pointer}
-  .escrita select:focus{outline:none;border-color:var(--azul)}
+    font-family:var(--ui);min-width:0}
+  .controles input{flex:2}
+  .controles select{flex:3;cursor:pointer}
+  .controles input:focus,.controles select:focus{outline:none;border-color:var(--azul);
+    background:var(--papel);color:var(--tinta)}
   .escrita input{flex:1;min-width:0;border:1px solid var(--borda);border-radius:11px;
     padding:12px 14px;font-size:.86rem;color:var(--tinta);background:var(--painel)}
   .escrita input::placeholder{color:var(--tinta-fraca)}
@@ -176,9 +180,13 @@
   </div>
   <div class="conversa" id="conversa" aria-live="polite"></div>
   <form class="escrita" id="formulario">
-    <select id="componente" aria-label="Componente curricular">
-      <option value="">Todos os componentes</option>
-    </select>
+    <div class="controles">
+      <input id="nomeProfessor" class="nome" autocomplete="given-name" maxlength="40"
+             placeholder="Seu nome (opcional)" aria-label="Seu nome, opcional">
+      <select id="componente" aria-label="Componente curricular">
+        <option value="">Todos os componentes</option>
+      </select>
+    </div>
     <input id="entrada" autocomplete="off" placeholder="O que você procura nas obras?" aria-label="Sua mensagem">
     <button type="submit" id="enviar">Enviar</button>
   </form>
@@ -196,7 +204,8 @@
     form: document.getElementById("formulario"),
     entrada: document.getElementById("entrada"),
     enviar: document.getElementById("enviar"),
-    componente: document.getElementById("componente")
+    componente: document.getElementById("componente"),
+    nomeProfessor: document.getElementById("nomeProfessor")
   };
 
   // A pergunta do nome saiu: os testadores digitavam a busca primeiro e a
@@ -458,7 +467,7 @@
   function iniciar(){
     if(estado.iniciado) return;
     estado.iniciado = true;
-    balao("bot", "Olá! Eu sou a Bússola do PNLD. Procuro conteúdo dentro das obras do PNLD 2027 e te levo direto à página.\n\nPergunte pelo tema da aula, por um gênero textual ou por um código da BNCC — EF03LP06, por exemplo. Se quiser restringir a um componente, use o seletor abaixo.");
+    balao("bot", "Olá! Eu sou a Bússola do PNLD. Procuro conteúdo dentro das obras do PNLD 2027 e te levo direto à página.\n\nPergunte pelo tema da aula, por um gênero textual ou por um código da BNCC — EF03LP06, por exemplo. Abaixo você pode dizer seu nome e restringir a um componente, se quiser.");
   }
 
   function enviarTexto(texto){
@@ -477,7 +486,8 @@
 
     var inicio = Date.now();
     var componente = el.componente ? el.componente.value : "";
-    MOTOR.buscar(pergunta, estado.nome, componente).then(function(d){
+    var nome = el.nomeProfessor ? el.nomeProfessor.value.trim().slice(0, 40) : "";
+    MOTOR.buscar(pergunta, nome, componente).then(function(d){
       carregando.remove();
       registro.gravar(pergunta, d, Date.now() - inicio);
       balao("bot", d.texto);
@@ -554,6 +564,19 @@
           });
         }
       };
+
+  /* O nome volta como campo opcional em vez de pergunta no chat: preenchido,
+     personaliza; vazio, as frases saem sem vocativo. O que não pode é a busca
+     virar nome, que foi o que acontecia. */
+  try {
+    var salvo = localStorage.getItem("bussola_nome");
+    if(salvo && el.nomeProfessor) el.nomeProfessor.value = salvo;
+  } catch(e) {}
+  if(el.nomeProfessor){
+    el.nomeProfessor.addEventListener("change", function(){
+      try { localStorage.setItem("bussola_nome", el.nomeProfessor.value.trim()); } catch(e) {}
+    });
+  }
 
   // depois de MOTOR existir: a lista de componentes sai do acervo
   popularComponentes();

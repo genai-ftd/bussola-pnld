@@ -198,6 +198,7 @@ def main():
             "referencia_parcial": responder.REFERENCIA_PARCIAL,
             "referencia_todas": responder.REFERENCIA_TODAS,
             "sem_referencia": responder.SEM_REFERENCIA,
+            "correcao": responder.CORRECAO,
         },
     }
     blob = json.dumps(dados, ensure_ascii=False, separators=(",", ":"))
