@@ -97,6 +97,23 @@
   .abrir[aria-disabled="true"]{background:var(--borda);color:var(--tinta-fraca);
     pointer-events:none}
 
+  /* ---------- índice remissivo ---------- */
+  .ocorrencias{align-self:stretch;background:var(--papel);border:1px solid var(--borda);
+    border-radius:14px;padding:12px 14px}
+  .ocorrencias h3{margin:0 0 10px;font-size:.74rem;font-weight:600;color:var(--tinta-suave)}
+  .ocorrencias .obra{margin-bottom:11px}
+  .ocorrencias .obra:last-child{margin-bottom:0}
+  .ocorrencias .nome-obra{font-size:.73rem;font-weight:600;color:var(--tinta);
+    display:block;margin-bottom:6px;line-height:1.35}
+  .ocorrencias .paginas{display:flex;flex-wrap:wrap;gap:5px}
+  .ocorrencias .paginas a,.ocorrencias .paginas span{display:inline-flex;
+    align-items:center;justify-content:center;min-width:30px;min-height:30px;
+    padding:0 7px;border-radius:8px;background:var(--azul-tint);
+    color:var(--azul-fundo);font-size:.71rem;font-weight:600;text-decoration:none;
+    font-variant-numeric:tabular-nums}
+  .ocorrencias .paginas a:hover{background:#dbe4ff}
+  .ocorrencias .paginas span{background:var(--painel);color:var(--tinta-fraca)}
+
   /* ---------- também encontrei ---------- */
   .tambem{align-self:stretch;background:var(--papel);border:1px solid var(--borda);
     border-radius:14px;padding:4px 14px}
@@ -525,7 +542,11 @@
   function iniciar(){
     if(estado.iniciado) return;
     estado.iniciado = true;
-    balao("bot", "Olá! Eu sou a Bússola do PNLD. Procuro conteúdo dentro das obras do PNLD 2027 e te levo direto à página.\n\nPergunte pelo tema da aula, por um gênero textual ou por um código da BNCC — EF03LP06, por exemplo. Abaixo você pode dizer seu nome e restringir a um componente, se quiser.");
+    /* Curta de propósito: o cabeçalho do painel já diz o nome e o que a Bússola
+       faz, e os dois controles são visíveis e rotulados. Repetir isso aqui
+       enchia meia tela de celular antes da primeira pergunta. Sobra o que só a
+       saudação pode dar — como perguntar. */
+    balao("bot", "Pergunte pelo tema da aula — ou por um código da BNCC, como EF03LP06.");
   }
 
   function enviarTexto(texto){

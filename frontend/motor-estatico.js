@@ -539,6 +539,7 @@ window.BUSSOLA_ESTATICO = (function(){
   function montarResultado(idxTrecho, pergunta, cob){
     var t = D.trechos[idxTrecho], obra = D.obras[t[0]];
     return {
+      obra_idx: t[0],
       titulo: obra[0], colecao: obra[1], disciplina: obra[2], ano: obra[3],
       trecho: recortar(t[3], pergunta),
       descricao_pagina: descreverPagina(t, obra),
@@ -640,7 +641,8 @@ window.BUSSOLA_ESTATICO = (function(){
   function montarRespostaReferencia(r, nome){
     if(!r.total_paginas){
       return {
-        texto: preencher(D.copy.sem_referencia, { nome: nome, alvo: r.alvo }),
+        texto: preencher(escolher(D.copy.sem_referencia, r.alvo),
+                         { nome: nome, alvo: r.alvo }),
         termos: [], resultados: [], tambem_encontrei: [], rotulo: null,
         confianca: "nenhuma"
       };
@@ -655,6 +657,69 @@ window.BUSSOLA_ESTATICO = (function(){
       : preencher(D.copy.referencia_parcial, { mostradas: r.resultados.length });
     return { texto: texto, termos: [], resultados: r.resultados,
              tambem_encontrei: [], rotulo: null, confianca: "referencia" };
+  }
+
+  /* Índice remissivo temático, espelho de Buscador._ocorrencias: páginas que
+     trazem todos os termos da pergunta. Sai das listas de postagem, sem
+     pontuar nada. */
+  function ocorrenciasDe(tokens, obrasPermitidas){
+    if(!indice || !tokens.length) return [];
+    var conjuntos = [], vistos = {}, i;
+    for(i = 0; i < tokens.length; i++){
+      var t = tokens[i];
+      if(vistos[t]) continue;
+      vistos[t] = 1;
+      var docs = {}, formas = [t].concat((D.sinonimos && D.sinonimos[t]) || []);
+      formas.forEach(function(f){
+        var lista = indice.postings[f];
+        if(lista) for(var j = 0; j < lista.length; j++) docs[lista[j][0]] = 1;
+      });
+      var chaves = Object.keys(docs);
+      if(chaves.length) conjuntos.push(docs);
+    }
+    if(!conjuntos.length) return [];
+
+    conjuntos.sort(function(a, b){ return Object.keys(a).length - Object.keys(b).length; });
+    var comuns = Object.keys(conjuntos[0]).filter(function(d){
+      for(var k = 1; k < conjuntos.length; k++) if(!conjuntos[k][d]) return false;
+      return true;
+    });
+    if(!comuns.length && conjuntos.length > 2){
+      comuns = Object.keys(conjuntos[0]).filter(function(d){ return conjuntos[1][d]; });
+    }
+    if(!comuns.length) return [];
+
+    var porObra = {};
+    comuns.forEach(function(d){
+      var t = D.trechos[+d];
+      if(obrasPermitidas && obrasPermitidas.indexOf(t[0]) < 0) return;
+      (porObra[t[0]] = porObra[t[0]] || {})[t[1]] = t[2] || String(t[1]);
+    });
+
+    var saida = Object.keys(porObra).map(function(oid){
+      var obra = D.obras[+oid];
+      var numeros = Object.keys(porObra[oid]).map(Number).sort(function(a, b){ return a - b; });
+      return {
+        titulo: obra[0],
+        total: numeros.length,
+        paginas: numeros.map(function(n){
+          return { rotulo: porObra[oid][n], link: obra[4] ? obra[4].replace(/\/$/, "") + "/" + n : "" };
+        })
+      };
+    }).sort(function(a, b){ return b.total - a.total; });
+
+    // pergunta ampla demais não vira índice remissivo: "atividades de leitura"
+    // casa com 107 páginas, e uma parede de números não ajuda a escolher
+    var totalGeral = saida.reduce(function(n, o){ return n + o.total; }, 0);
+    if(totalGeral > 60) return [];
+
+    var restante = 40, cortado = [];
+    for(var k = 0; k < saida.length && restante > 0; k++){
+      saida[k].paginas = saida[k].paginas.slice(0, restante);
+      restante -= saida[k].paginas.length;
+      cortado.push(saida[k]);
+    }
+    return cortado;
   }
 
   function montarResposta(pergunta, nome, filtros, resultados, tokens, assunto){
@@ -706,6 +771,9 @@ window.BUSSOLA_ESTATICO = (function(){
       filtros: filtros,
       termos: tokens,
       resultados: principais,
+      ocorrencias: melhor >= ALTO
+        ? ocorrenciasDe(tokens, principais.map(function(r){ return r.obra_idx; }))
+        : [],
       tambem_encontrei: ancorados.slice(3),
       rotulo: null,
       confianca: melhor >= ALTO ? "alta" : "parcial"

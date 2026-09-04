@@ -38,6 +38,11 @@ PESO_DENSO = 0.25 / K_RRF   # ~0,004: um quarto de uma posição no ranking
 PESO_ANCORAGEM = 0.6        # o quanto conter os termos da pergunta promove um trecho
 REPETICOES_BOILERPLATE = 3  # texto que se repete N vezes na obra é paratexto
 TETO_POR_OBRA_PRINCIPAIS = 2  # quantos cartões principais a mesma obra pode ocupar
+MAX_OCORRENCIAS = 40          # teto do índice remissivo, para a resposta não virar lista infinita
+# Acima disto a pergunta é ampla demais para índice remissivo: "atividades de
+# leitura" casa com 107 páginas, e uma parede de números não ajuda ninguém a
+# escolher. O índice serve a tema específico — "instrumentos musicais", 26.
+LIMITE_UTIL_OCORRENCIAS = 60
 # Sumários e quadros de conteúdo listam títulos sem pontuar frase nenhuma. No
 # acervo a mediana é 1,05 ponto final por 100 caracteres; abaixo de 0,30 estão
 # 1% dos trechos, e todos são listagem. Elas nunca são resposta: o professor
@@ -186,6 +191,13 @@ class Buscador:
         # tabela termo -> disciplina, medida no próprio acervo (ver disciplinas.py)
         self.tabela_disciplinas = mod_disciplinas.construir_tabela(
             self.tokens_chunk, self.disciplina_chunk)
+        # (obra, página física) -> número impresso, montado uma vez: procurar
+        # isso varrendo os trechos a cada consulta custaria caro à toa
+        self.pagina_impressa = {}
+        for c in self.chunks:
+            chave = (c["obra_id"], c["pagina_fisica"])
+            if c.get("pagina_impressa") and chave not in self.pagina_impressa:
+                self.pagina_impressa[chave] = c["pagina_impressa"]
         self.sinonimos = self._ler_sinonimos()
         self.indice_codigos = mod_referencia.indexar_codigos(self.tokens_chunk)
         self.obras_indexadas = len({c["obra_id"] for c in self.chunks}) or 1
@@ -486,6 +498,12 @@ class Buscador:
             # o que existe de mais próximo quando nada passa na ancoragem: serve
             # para mostrar assunto vizinho SEM apresentá-lo como resposta
             "vizinhos": selecionados[:3] if confianca_faixa == "nenhuma" else [],
+            # índice remissivo ao lado dos cartões, só quando temos certeza do
+            # assunto: numa resposta com ressalva ele daria falsa precisão
+            "ocorrencias": (self._ocorrencias(
+                tokens_cobertura,
+                {r["obra_id"] for r in ancorados[:principais]})
+                if confianca_faixa == "alta" else []),
             "termos_ausentes": ausentes,
             "termos": tokens,
         }
@@ -497,6 +515,86 @@ class Buscador:
             return False
         intersecao = len(a & b)
         return intersecao / float(len(a) + len(b) - intersecao) >= limiar
+
+    def _ocorrencias(self, tokens, obras_permitidas=None):
+        """Todas as páginas onde o tema aparece, agrupadas por obra.
+
+        A reclamação mais repetida do teste foi esta: "a habilidade aparece em
+        24 páginas e ele mostra 2", "deixou de mostrar as páginas 94 e 109". Os
+        cartões continuam sendo uma amostra comentada; isto aqui é o índice
+        remissivo que faltava ao lado deles.
+
+        Sai barato porque não precisa pontuar nada: são as listas de postagem do
+        BM25 intersectadas. Uma página que traz todos os termos da pergunta é,
+        por definição, uma página sobre o assunto.
+        """
+        if not tokens:
+            return []
+        conjuntos = []
+        for termo in dict.fromkeys(tokens):
+            docs = set()
+            for forma in [termo] + list(self.sinonimos.get(termo, ())[:2]):
+                indices = self.bm25.docs.get(forma)
+                if indices is not None:
+                    docs.update(int(i) for i in indices)
+            if docs:
+                conjuntos.append(docs)
+        if not conjuntos:
+            return []
+
+        # todos os termos na mesma página; se nada casar tudo, afrouxa para os
+        # dois termos mais discriminantes, que são os que carregam o assunto
+        comuns = set.intersection(*conjuntos)
+        if not comuns and len(conjuntos) > 2:
+            conjuntos.sort(key=len)
+            comuns = conjuntos[0] & conjuntos[1]
+        if not comuns:
+            return []
+
+        por_obra = {}
+        for idx in comuns:
+            if self.eh_listagem[idx]:
+                continue
+            chunk = self.chunks[idx]
+            if obras_permitidas and chunk["obra_id"] not in obras_permitidas:
+                continue
+            por_obra.setdefault(chunk["obra_id"], set()).add(chunk["pagina_fisica"])
+
+        from ingest.issuu import link_pagina
+        saida = []
+        for obra_id, paginas in por_obra.items():
+            obra = self.catalogo.get(obra_id, {})
+            issuu = obra.get("issuu", {})
+            confiavel = issuu.get("offset_pagina") is not None
+            itens = []
+            for fisica in sorted(paginas):
+                impressa = self.pagina_impressa.get((obra_id, fisica), "")
+                itens.append({
+                    "pagina_fisica": fisica,
+                    "rotulo": impressa or str(fisica),
+                    "link": (link_pagina(issuu.get("public_location", ""), fisica)
+                             if confiavel else ""),
+                })
+            saida.append({
+                "obra_id": obra_id,
+                "titulo": titulo_curto(obra.get("titulo", obra_id)),
+                "total": len(itens),
+                "paginas": itens,
+            })
+        saida.sort(key=lambda o: -o["total"])
+        if sum(o["total"] for o in saida) > LIMITE_UTIL_OCORRENCIAS:
+            return []
+        # o teto vale sobre o total de páginas, não de obras
+        restante, cortado = MAX_OCORRENCIAS, []
+        for obra in saida:
+            if restante <= 0:
+                break
+            obra["paginas"] = obra["paginas"][:restante]
+            restante -= len(obra["paginas"])
+            cortado.append(obra)
+        return cortado
+
+
 
     def _diversificar(self, classificados, similaridades, pergunta, principais,
                       extras, componente=""):

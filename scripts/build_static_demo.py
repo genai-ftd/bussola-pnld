@@ -200,7 +200,7 @@ def main():
             "referencia": responder.REFERENCIA,
             "referencia_parcial": responder.REFERENCIA_PARCIAL,
             "referencia_todas": responder.REFERENCIA_TODAS,
-            "sem_referencia": responder.SEM_REFERENCIA,
+            "sem_referencia": responder.SEM_REFERENCIA_VARIANTES,
             "correcao": responder.CORRECAO,
         },
     }

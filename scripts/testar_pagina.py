@@ -31,7 +31,8 @@ CASOS = [
     ("partes do corpo", "Ana", "Língua Inglesa", "componente + nome"),
     ("programação em python", "", "", "fora do acervo"),
     ("atividades de leitura para o 3º ano", "", "", "busca temática"),
-    ("fontes de luz", "", "", "sinônimo: alcança 'fontes luminosas'"),
+    ("fontes de luz", "", "", "sinônimo + índice remissivo"),
+    ("instrumentos musicais", "", "", "índice remissivo temático"),
     ("cantiga popular", "", "", "sinônimo: singular alcança plural"),
     ("Páscoa", "", "", "não corrige para nome próprio"),
 ]
@@ -113,7 +114,9 @@ def main():
     print("\n== motor de busca ==")
     prova = "\n".join(
         "  try {{ const r = await M.buscar({}, {}, {});"
-        " console.log('ok|' + {} + '|' + r.resultados.length + '|' + r.texto.slice(0,70)); }}"
+        " console.log('ok|' + {} + '|' + r.resultados.length"
+        " + '+' + ((r.ocorrencias||[]).reduce(function(n,g){{return n+g.total;}},0))"
+        " + '|' + r.texto.slice(0,64)); }}"
         " catch(e) {{ console.log('FALHA|' + {} + '|' + (e && e.message)); }}".format(
             json.dumps(q), json.dumps(n), json.dumps(c), json.dumps(rotulo),
             json.dumps(rotulo))
@@ -128,8 +131,8 @@ def main():
     for linha in saida.splitlines():
         partes = linha.split("|")
         if partes[0] == "ok":
-            print("  ok   {:<26s} {:>2s} resultados :: {}".format(
-                partes[1], partes[2], partes[3][:60]))
+            print("  ok   {:<34s} {:>7s} :: {}".format(
+                partes[1], partes[2] + " pág", partes[3][:56]))
         elif partes[0] == "FALHA":
             print("  FALHA {}: {}".format(partes[1], partes[2]))
             falhas += 1

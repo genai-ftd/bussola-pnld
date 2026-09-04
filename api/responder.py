@@ -16,11 +16,18 @@ import unicodedata
 
 # ------------------------------------------------------------------ variantes
 
+# Oito variantes em vez de quatro, alternando quem abre a frase (nome, verbo,
+# objeto) para o chat não soar recitado quando o professor faz dez buscas
+# seguidas. Termo sempre igual — "trecho", nunca "resultado" ou "match".
 ABERTURAS = [
     "{nome}, encontrei {n} {palavra} que {verbo} com a sua busca:",
     "Achei {n} {palavra} sobre isso, {nome}:",
     "{nome}, isto é o que o acervo do PNLD 2027 traz sobre o tema:",
     "Encontrei o seguinte nas obras indexadas, {nome}:",
+    "Veja o que encontrei, {nome}:",
+    "{nome}, estes {palavra} respondem à sua busca:",
+    "O acervo traz isto sobre o tema, {nome}:",
+    "Encontrei {n} {palavra} sobre o assunto, {nome}:",
 ]
 
 ABERTURAS_PARCIAIS = [
@@ -31,6 +38,10 @@ ABERTURAS_PARCIAIS = [
     "reformular pelo tema da aula:",
     "Encontrei correspondência fraca para essa pergunta, {nome}. Vale conferir "
     "antes de usar:",
+    "{nome}, a correspondência aqui é fraca. Confira antes de levar para a aula:",
+    "Isto pode não ser o que você procura, {nome}, mas foi o mais perto que cheguei:",
+    "Não tenho certeza desta, {nome}. Se eu errei o alvo, nomear o componente ajuda:",
+    "Achei só algo aproximado, {nome}. Vale conferir na página antes de usar:",
 ]
 
 # Quando dá para nomear o que faltou, a mensagem fica muito mais útil: o
@@ -51,6 +62,14 @@ SEM_RESULTADO_COM_TERMO = [
     "entrou.",
     "{termo} não está nas obras que eu tenho aqui, {nome}. Pode ser que esteja "
     "num volume que ainda não entrou no índice.",
+    "{termo} não aparece nas obras indexadas. Se o assunto tiver outro nome no "
+    "material, me diz qual e eu procuro de novo.",
+    "Nada sobre {termo} por aqui, {nome}. O tema da aula ou o código da BNCC "
+    "costumam encontrar melhor do que o termo isolado.",
+    "Não localizei {termo}, {nome}. Pode ser que a obra que trata disso ainda "
+    "não esteja no índice.",
+    "{nome}, {termo} não está no que eu indexei. Prefiro te dizer isso a te "
+    "mandar para uma página que não responde.",
 ]
 
 SEM_RESULTADO_GENERICO = [
@@ -62,6 +81,13 @@ SEM_RESULTADO_GENERICO = [
     "a te mandar para uma página errada.",
     "{nome}, essa passou longe do que eu tenho indexado. Quer tentar com outras "
     "palavras?",
+    "Não consegui casar sua pergunta com nenhuma página, {nome}. Uma palavra mais "
+    "específica costuma resolver.",
+    "{nome}, não encontrei. Se você souber o código da BNCC, ele acha na hora.",
+    "Nada suficientemente próximo por aqui. Tenta nomear o assunto da aula em vez "
+    "da pergunta inteira.",
+    "Não achei nada que responda isso, {nome}. Escolher o componente aqui embaixo "
+    "costuma estreitar bem a busca.",
 ]
 
 ACERVO_VAZIO = (
@@ -83,6 +109,13 @@ CORRECAO = "Você quis dizer {corrigida}? "
 SEM_REFERENCIA = ("{nome}, não encontrei {alvo} em nenhuma página das obras "
                   "indexadas. Confira o código — ou pode ser que a obra que o "
                   "traz ainda não esteja no índice.")
+SEM_REFERENCIA_VARIANTES = [
+    SEM_REFERENCIA,
+    "{alvo} não aparece nas obras indexadas, {nome}. Vale conferir o código; se "
+    "estiver certo, é a obra que ainda não entrou no índice.",
+    "Não localizei {alvo} em nenhuma página, {nome}. Confira se o código está "
+    "completo — eu procuro com ou sem o \"EF\" na frente.",
+]
 
 # ------------------------------------------------------------------ auxiliares
 
@@ -249,7 +282,8 @@ def montar_resposta(resultado, nome=None, acervo_vazio=False, guiada=None):
         alvo = resultado.get("alvo", "")
         total = resultado.get("total_paginas", 0)
         if not total:
-            return {"texto": _tratar_vocativo(SEM_REFERENCIA.format(alvo=alvo), nome),
+            molde = _escolher(SEM_REFERENCIA_VARIANTES, pergunta or alvo)
+            return {"texto": _tratar_vocativo(molde.replace("{alvo}", alvo), nome),
                     "resultados": [], "tambem_encontrei": [], "rotulo": None,
                     "confianca": "nenhuma", "termos": resultado.get("termos", [])}
         obras = resultado.get("total_obras", 1)
@@ -312,6 +346,7 @@ def montar_resposta(resultado, nome=None, acervo_vazio=False, guiada=None):
         "termos": resultado.get("termos", []),
         "correcao": correcao,
         "resultados": [_cartao(r) for r in principais],
+        "ocorrencias": resultado.get("ocorrencias", []),
         "tambem_encontrei": [_cartao(r) for r in resultado.get("tambem_encontrei", [])],
         "rotulo": None,
         "confianca": confianca,
