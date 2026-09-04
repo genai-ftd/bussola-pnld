@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from api import referencia as mod_referencia
 from api.guiadas import detectar as detectar_guiada
 from api.responder import montar_resposta
 
@@ -49,9 +50,15 @@ CACHE_BUSCAS = 512
 
 
 @functools.lru_cache(maxsize=CACHE_BUSCAS)
-def _buscar_em_cache(pergunta: str, limite: int):
-    """Perguntas repetidas (as sugestões do chat, sobretudo) não recalculam."""
-    return _buscador.buscar(pergunta, principais=limite, extras=3)
+def _buscar_em_cache(pergunta: str, limite: int, componente: str = ""):
+    """Perguntas repetidas não recalculam. O componente entra na chave do cache."""
+    return _buscador.buscar(pergunta, principais=limite, extras=3,
+                            componente=componente)
+
+
+@functools.lru_cache(maxsize=CACHE_BUSCAS)
+def _buscar_referencia_em_cache(tipo: str, alvo: str, pergunta: str):
+    return _buscador.buscar_referencia(tipo, alvo, pergunta)
 
 
 def obter_buscador():
@@ -75,6 +82,7 @@ class Pergunta(BaseModel):
     pergunta: str = Field(..., min_length=1, max_length=500)
     nome: str = Field("", max_length=80)
     limite: int = Field(3, ge=1, le=8)
+    componente: str = Field("", max_length=60)
 
 
 @app.get("/api/health")
@@ -145,10 +153,21 @@ async def busca(p: Pergunta):
     # conexões enquanto a busca ocupa o trabalhador dedicado.
     # Perguntas sobre a coleção inteira ganham panorama curado, e a busca roda
     # com uma consulta interna melhor formulada para as páginas citadas baterem.
+    # Código da BNCC ou trecho entre aspas não é busca temática: o professor
+    # quer todas as ocorrências, não uma amostra variada.
+    ref = mod_referencia.detectar(p.pergunta)
+    if ref and not detectar_guiada(p.pergunta):
+        resultado = await asyncio.get_event_loop().run_in_executor(
+            _FILA_BUSCA, _buscar_referencia_em_cache, ref[0], ref[1], p.pergunta)
+        resposta = montar_resposta(dict(resultado), p.nome)
+        return {**resposta, "filtros": {}, "confiante": resultado["confiante"],
+                "cobertura": resultado.get("cobertura"),
+                "ms": int((time.time() - inicio) * 1000)}
+
     guiada = detectar_guiada(p.pergunta)
     consulta = guiada["consulta"] if guiada else p.pergunta
     resultado = await asyncio.get_event_loop().run_in_executor(
-        _FILA_BUSCA, _buscar_em_cache, consulta, p.limite)
+        _FILA_BUSCA, _buscar_em_cache, consulta, p.limite, p.componente)
     # o cache guarda o resultado da consulta interna; a resposta fala da pergunta
     # que o professor escreveu
     resultado = dict(resultado, pergunta=p.pergunta)

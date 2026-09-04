@@ -123,8 +123,12 @@
     30%{opacity:1;transform:translateY(-3px)}}
 
   /* ---------- caixa de escrita ---------- */
-  .escrita{display:flex;gap:8px;padding:12px;background:var(--papel);
+  .escrita{display:flex;flex-wrap:wrap;gap:8px;padding:12px;background:var(--papel);
     border-top:1px solid var(--borda);flex:none}
+  .escrita select{flex:1 0 100%;border:1px solid var(--borda);border-radius:10px;
+    padding:9px 11px;font-size:.78rem;color:var(--tinta-suave);background:var(--painel);
+    font-family:var(--ui);cursor:pointer}
+  .escrita select:focus{outline:none;border-color:var(--azul)}
   .escrita input{flex:1;min-width:0;border:1px solid var(--borda);border-radius:11px;
     padding:12px 14px;font-size:.86rem;color:var(--tinta);background:var(--painel)}
   .escrita input::placeholder{color:var(--tinta-fraca)}
@@ -172,6 +176,9 @@
   </div>
   <div class="conversa" id="conversa" aria-live="polite"></div>
   <form class="escrita" id="formulario">
+    <select id="componente" aria-label="Componente curricular">
+      <option value="">Todos os componentes</option>
+    </select>
     <input id="entrada" autocomplete="off" placeholder="O que você procura nas obras?" aria-label="Sua mensagem">
     <button type="submit" id="enviar">Enviar</button>
   </form>
@@ -188,11 +195,14 @@
     conversa: document.getElementById("conversa"),
     form: document.getElementById("formulario"),
     entrada: document.getElementById("entrada"),
-    enviar: document.getElementById("enviar")
+    enviar: document.getElementById("enviar"),
+    componente: document.getElementById("componente")
   };
 
+  // A pergunta do nome saiu: os testadores digitavam a busca primeiro e a
+  // ferramenta passava a chamá-los de "instrumentos musicais", além de gravar
+  // isso na coluna `nome` do registro.
   var estado = { nome: "", iniciado: false, ocupado: false };
-  try { estado.nome = localStorage.getItem("bussola_nome") || ""; } catch(e) {}
 
   /* ============================ apresentação ============================ */
 
@@ -448,11 +458,7 @@
   function iniciar(){
     if(estado.iniciado) return;
     estado.iniciado = true;
-    if(estado.nome){
-      balao("bot", "Oi de novo, " + estado.nome + "! Sobre o que você quer pesquisar?");
-    } else {
-      balao("bot", "Olá! Eu sou a Bússola do PNLD. Eu procuro conteúdo dentro das obras do PNLD 2027 e te levo direto à página.\n\nAntes de começar: como posso te chamar?");
-    }
+    balao("bot", "Olá! Eu sou a Bússola do PNLD. Procuro conteúdo dentro das obras do PNLD 2027 e te levo direto à página.\n\nPergunte pelo tema da aula, por um gênero textual ou por um código da BNCC — EF03LP06, por exemplo. Se quiser restringir a um componente, use o seletor abaixo.");
   }
 
   function enviarTexto(texto){
@@ -461,12 +467,6 @@
     balao("eu", texto);
     el.entrada.value = "";
 
-    if(!estado.nome){
-      estado.nome = texto.replace(/[^\p{L}\p{N}\s'.-]/gu, "").slice(0, 40).trim() || "Professor(a)";
-      try { localStorage.setItem("bussola_nome", estado.nome); } catch(e) {}
-      balao("bot", "Prazer, " + estado.nome + "! Me conta o que você procura — pode ser o tema da aula, um gênero textual ou uma habilidade da BNCC.");
-      return;
-    }
     perguntar(texto);
   }
 
@@ -476,7 +476,8 @@
     var carregando = digitando();
 
     var inicio = Date.now();
-    MOTOR.buscar(pergunta, estado.nome).then(function(d){
+    var componente = el.componente ? el.componente.value : "";
+    MOTOR.buscar(pergunta, estado.nome, componente).then(function(d){
       carregando.remove();
       registro.gravar(pergunta, d, Date.now() - inicio);
       balao("bot", d.texto);
@@ -503,6 +504,20 @@
   registro.carregar();
   registro.revelarSePedido();
 
+  /* Três testadores pediram a mesma coisa: poder escolher o componente antes de
+     buscar. A lista sai do acervo, não é escrita à mão. */
+  function popularComponentes(){
+    if(!MOTOR.componentes) return;
+    MOTOR.componentes().then(function(nomes){
+      nomes.forEach(function(nome){
+        var o = document.createElement("option");
+        o.value = nome; o.textContent = nome;
+        el.componente.appendChild(o);
+      });
+    }).catch(function(){});
+  }
+  popularComponentes();
+
   el.fab.onclick = abrir;
   el.fechar.onclick = fechar;
   document.getElementById("baixarRegistro").onclick = function(){ registro.baixar(); };
@@ -517,11 +532,24 @@
   var MOTOR = window.BUSSOLA_ESTATICO
     ? window.BUSSOLA_ESTATICO
     : {
-        buscar: function(pergunta, nome){
+        componentes: function(){
+          return fetch("/api/catalogo").then(function(r){ return r.json(); })
+            .then(function(d){
+              var vistos = {}, saida = [];
+              (d.obras || []).forEach(function(o){
+                if(o.disciplina && !vistos[o.disciplina]){
+                  vistos[o.disciplina] = 1; saida.push(o.disciplina);
+                }
+              });
+              return saida.sort();
+            });
+        },
+        buscar: function(pergunta, nome, componente){
           return fetch("/api/busca", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ pergunta: pergunta, nome: nome, limite: 3 })
+            body: JSON.stringify({ pergunta: pergunta, nome: nome, limite: 3,
+                                   componente: componente || "" })
           }).then(function(r){
             if(!r.ok) throw new Error("HTTP " + r.status);
             return r.json();

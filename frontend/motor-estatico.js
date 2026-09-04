@@ -166,6 +166,68 @@ window.BUSSOLA_ESTATICO = (function(){
      acervo (ver api/disciplinas.py): o professor pergunta "tabuada de
      multiplicação", não "matemática", e sem esse sinal a busca acerta o tema e
      erra a obra. */
+  var CODIGO_BNCC = /\b(?:ef)?(\d{2}[a-z]{2}\d{2})\b/i;
+  var FRASE_CITADA = /["\u201c]([^"\u201d]{3,80})["\u201d]/;
+  var MAX_REFERENCIA = 15;
+
+  /* Código da BNCC ou trecho entre aspas não é busca temática: o professor quer
+     o índice remissivo — todas as páginas —, não três trechos parecidos. */
+  function detectarReferencia(pergunta){
+    var m = CODIGO_BNCC.exec(pergunta || "");
+    if(m) return { tipo: "codigo", alvo: m[1].toLowerCase() };
+    m = FRASE_CITADA.exec(pergunta || "");
+    if(m) return { tipo: "frase", alvo: m[1].trim() };
+    return null;
+  }
+
+  function buscarReferencia(ref, pergunta){
+    if(!indice) construirIndice();
+    var padrao = /^(?:ef)?(\d{2}[a-z]{2}\d{2})$/;
+    var achados = [], vistos = {}, d, i;
+
+    for(d = 0; d < D.trechos.length; d++){
+      var toks = indice.tokens[d], bate = false;
+      if(ref.tipo === "codigo"){
+        for(i = 0; i < toks.length; i++){
+          var m = padrao.exec(toks[i]);
+          if(m && m[1] === ref.alvo){ bate = true; break; }
+        }
+      } else {
+        var alvo = tokenizar(ref.alvo);
+        if(alvo.length){
+          for(i = 0; i + alvo.length <= toks.length && !bate; i++){
+            var igual = true;
+            for(var j = 0; j < alvo.length; j++){
+              if(toks[i + j] !== alvo[j]){ igual = false; break; }
+            }
+            bate = igual;
+          }
+        }
+      }
+      if(!bate) continue;
+      var chave = D.trechos[d][0] + ":" + D.trechos[d][1];
+      if(vistos[chave]) continue;
+      vistos[chave] = 1;
+      achados.push(d);
+    }
+
+    achados.sort(function(a, b){
+      var oa = D.trechos[a][0], ob = D.trechos[b][0];
+      return oa !== ob ? oa - ob : D.trechos[a][1] - D.trechos[b][1];
+    });
+    var obras = {};
+    for(i = 0; i < achados.length; i++) obras[D.trechos[achados[i]][0]] = 1;
+    return {
+      modo: "referencia",
+      alvo: ref.tipo === "codigo" ? "EF" + ref.alvo.toUpperCase() : '"' + ref.alvo + '"',
+      total_paginas: achados.length,
+      total_obras: Object.keys(obras).length,
+      resultados: achados.slice(0, MAX_REFERENCIA).map(function(d){
+        return montarResultado(d, pergunta, 1);
+      })
+    };
+  }
+
   function inferirDisciplina(tokens){
     if(!D.voto_disciplina) return null;
     var votos = {}, vistos = {}, total = 0, i;
@@ -404,10 +466,12 @@ window.BUSSOLA_ESTATICO = (function(){
     return uniao > 0 && inter / uniao >= 0.6;
   }
 
-  function diversificar(ordenados, principais, extras){
+  function diversificar(ordenados, principais, extras, componente){
     var vistasPagina = {}, vistosTexto = [], primeiros = [], restantes = [], obras = {};
     for(var i = 0; i < ordenados.length; i++){
       var idx = ordenados[i][1], t = D.trechos[idx], chave = t[0] + ":" + t[1];
+      // seletor de componente é restrição, não preferência
+      if(componente && D.obras[t[0]][2] !== componente) continue;
       if(vistasPagina[chave]) continue;
 
       // os manuais do professor se repetem quase iguais entre volumes; comparar
@@ -451,7 +515,15 @@ window.BUSSOLA_ESTATICO = (function(){
   }
   function escolher(lista, texto){ return lista[semente(texto) % lista.length]; }
   function preencher(molde, campos){
-    return molde.replace(/\{(\w+)\}/g, function(tudo, chave){
+    var texto = molde;
+    // Sem nome, tira o vocativo em vez de chamar todo mundo de "Professor(a)":
+    // a pergunta do nome saiu do chat porque os testadores digitavam a busca
+    // primeiro e passavam a ser chamados de "instrumentos musicais".
+    if(!campos.nome){
+      texto = texto.replace(/\{nome\}, */g, "").replace(/,? *\{nome\}/g, "");
+      texto = texto.charAt(0).toUpperCase() + texto.slice(1);
+    }
+    return texto.replace(/\{(\w+)\}/g, function(tudo, chave){
       return campos[chave] !== undefined ? campos[chave] : tudo;
     });
   }
@@ -474,8 +546,31 @@ window.BUSSOLA_ESTATICO = (function(){
     return frases;
   }
 
+  /* Consulta de referência: quantas páginas, em quantas obras, e a lista.
+     A copy vem de D.copy, a mesma de api/responder.py, para as duas camadas
+     dizerem exatamente a mesma coisa. */
+  function montarRespostaReferencia(r, nome){
+    if(!r.total_paginas){
+      return {
+        texto: preencher(D.copy.sem_referencia, { nome: nome, alvo: r.alvo }),
+        termos: [], resultados: [], tambem_encontrei: [], rotulo: null,
+        confianca: "nenhuma"
+      };
+    }
+    var texto = preencher(D.copy.referencia, {
+      alvo: r.alvo, paginas: r.total_paginas,
+      p_palavra: r.total_paginas === 1 ? "página" : "páginas",
+      obras: r.total_obras === 1 ? "numa obra" : "em " + r.total_obras + " obras"
+    });
+    texto += r.resultados.length >= r.total_paginas
+      ? D.copy.referencia_todas
+      : preencher(D.copy.referencia_parcial, { mostradas: r.resultados.length });
+    return { texto: texto, termos: [], resultados: r.resultados,
+             tambem_encontrei: [], rotulo: null, confianca: "referencia" };
+  }
+
   function montarResposta(pergunta, nome, filtros, resultados, tokens, assunto){
-    nome = (nome || "").trim() || "Professor(a)";
+    nome = (nome || "").trim();
     var melhor = 0, i;
     for(i = 0; i < resultados.length; i++) melhor = Math.max(melhor, resultados[i].cobertura);
 
@@ -531,11 +626,18 @@ window.BUSSOLA_ESTATICO = (function(){
 
   /* -------------------------------- busca -------------------------------- */
 
-  function buscar(pergunta, nome){
+  function buscar(pergunta, nome, componente){
     return new Promise(function(resolve){
       // deixa o "digitando…" pintar antes do primeiro cálculo, que monta o índice
       setTimeout(function(){
+        var ref = detectarReferencia(pergunta);
+        if(ref && !detectarGuiada(pergunta)){
+          resolve(montarRespostaReferencia(buscarReferencia(ref, pergunta), nome));
+          return;
+        }
         var filtros = filtrosDa(pergunta), tokens = tokensDaPergunta(pergunta);
+        // o componente escolhido no seletor vale mais que qualquer dedução
+        if(componente){ filtros.disciplina = componente; filtros.disciplina_inferida = false; }
         var assunto = extrairAssunto(pergunta);
         var escolhidos, resultados;
 
@@ -582,7 +684,7 @@ window.BUSSOLA_ESTATICO = (function(){
         }
         // a cobertura julga a pergunta inteira, inclusive o que virou filtro
         var comAdj = tokenizarAdjacentes(assunto);
-        if(!filtros.disciplina){
+        if(!filtros.disciplina && !componente){
           var inferida = inferirDisciplina(tokens);
           if(inferida){ filtros.disciplina = inferida; filtros.disciplina_inferida = true; }
         }
@@ -605,7 +707,7 @@ window.BUSSOLA_ESTATICO = (function(){
           var ca = Math.round((cobs[a[1]] || 0) * 20), cb = Math.round((cobs[b[1]] || 0) * 20);
           return cb !== ca ? cb - ca : b[0] - a[0];
         });
-        escolhidos = diversificar(candidatos.slice(0, 200), 3, 3);
+        escolhidos = diversificar(candidatos.slice(0, 200), 3, 3, componente);
         resultados = escolhidos.map(function(p){
           return montarResultado(p[1], pergunta, cobs[p[1]] || 0);
         });
@@ -614,5 +716,13 @@ window.BUSSOLA_ESTATICO = (function(){
     });
   }
 
-  return { buscar: buscar };
+  function componentes(){
+    var vistos = {}, saida = [];
+    D.obras.forEach(function(o){
+      if(o[2] && !vistos[o[2]]){ vistos[o[2]] = 1; saida.push(o[2]); }
+    });
+    return Promise.resolve(saida.sort());
+  }
+
+  return { buscar: buscar, componentes: componentes };
 })();

@@ -194,6 +194,10 @@ def main():
             "sem_termo": responder.SEM_RESULTADO_COM_TERMO,
             "sem_generico": responder.SEM_RESULTADO_GENERICO,
             "rotulo_vizinhos": responder.ROTULO_VIZINHOS,
+            "referencia": responder.REFERENCIA,
+            "referencia_parcial": responder.REFERENCIA_PARCIAL,
+            "referencia_todas": responder.REFERENCIA_TODAS,
+            "sem_referencia": responder.SEM_REFERENCIA,
         },
     }
     blob = json.dumps(dados, ensure_ascii=False, separators=(",", ":"))

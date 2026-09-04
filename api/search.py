@@ -17,6 +17,7 @@ import numpy as np
 
 from api import confianca
 from api import disciplinas as mod_disciplinas
+from api import referencia as mod_referencia
 from api.confianca import cobertura, termos_ausentes, unidades
 from ingest.metadata import (extrair_assunto, norm, parse_pergunta,
                              remover_termos_de_filtro, titulo_curto)
@@ -35,6 +36,7 @@ POOL = 120          # quantos candidatos cada estratégia contribui
 PESO_DENSO = 0.25 / K_RRF   # ~0,004: um quarto de uma posição no ranking
 PESO_ANCORAGEM = 0.6        # o quanto conter os termos da pergunta promove um trecho
 REPETICOES_BOILERPLATE = 3  # texto que se repete N vezes na obra é paratexto
+TETO_POR_OBRA_PRINCIPAIS = 2  # quantos cartões principais a mesma obra pode ocupar
 # Sumários e quadros de conteúdo listam títulos sem pontuar frase nenhuma. No
 # acervo a mediana é 1,05 ponto final por 100 caracteres; abaixo de 0,30 estão
 # 1% dos trechos, e todos são listagem. Elas nunca são resposta: o professor
@@ -183,6 +185,7 @@ class Buscador:
         # tabela termo -> disciplina, medida no próprio acervo (ver disciplinas.py)
         self.tabela_disciplinas = mod_disciplinas.construir_tabela(
             self.tokens_chunk, self.disciplina_chunk)
+        self.indice_codigos = mod_referencia.indexar_codigos(self.tokens_chunk)
         self.obras_indexadas = len({c["obra_id"] for c in self.chunks}) or 1
 
     # ------------------------------------------------------------------ carga
@@ -280,7 +283,56 @@ class Buscador:
             fator *= 0.45          # capa e folha de rosto
         return fator
 
-    def buscar(self, pergunta: str, principais: int = 3, extras: int = 3):
+    def buscar_referencia(self, tipo, alvo, pergunta, limite=None):
+        """Todas as ocorrências exatas, agrupadas por obra e em ordem de página.
+
+        Sem teto por obra e sem diversificação: aqui o professor quer o índice
+        remissivo, não uma amostra variada. Sumários entram — numa consulta de
+        código, a página do quadro de habilidades é resposta legítima.
+        """
+        limite = limite or mod_referencia.MAX_RESULTADOS
+        if tipo == "codigo":
+            indices = self.indice_codigos.get(alvo, [])
+        else:
+            alvo_tokens = tokenizar(alvo)
+            indices = [i for i, toks in enumerate(self.tokens_chunk)
+                       if _contem_sequencia(toks, alvo_tokens)] if alvo_tokens else []
+
+        vistos, achados = set(), []
+        for i in indices:
+            chunk = self.chunks[i]
+            chave = (chunk["obra_id"], chunk["pagina_fisica"])
+            if chave in vistos:
+                continue
+            vistos.add(chave)
+            achados.append(i)
+        achados.sort(key=lambda i: (self.chunks[i]["obra_id"],
+                                    self.chunks[i]["pagina_fisica"]))
+
+        self._cobertura_cache = {i: 1.0 for i in achados}
+        resultados = [self._montar(i, 1.0, 1.0, pergunta) for i in achados[:limite]]
+        obras = {self.chunks[i]["obra_id"] for i in achados}
+        return {
+            "pergunta": pergunta,
+            "filtros": {},
+            "modo": "referencia",
+            "tipo_referencia": tipo,
+            # o código volta na forma canônica, mesmo que digitado sem o "EF"
+            "alvo": ("EF" + alvo.upper()) if tipo == "codigo" else '"%s"' % alvo,
+            "confianca": "alta" if achados else "nenhuma",
+            "cobertura": 1.0 if achados else 0.0,
+            "confiante": bool(achados),
+            "total_paginas": len(achados),
+            "total_obras": len(obras),
+            "principais": resultados,
+            "tambem_encontrei": [],
+            "vizinhos": [],
+            "termos_ausentes": [],
+            "termos": tokenizar(pergunta),
+        }
+
+    def buscar(self, pergunta: str, principais: int = 3, extras: int = 3,
+               componente: str = ""):
         filtros = parse_pergunta(pergunta)
         # "Quero pesquisar sobre Sistema Solar" vira "Sistema Solar": a moldura
         # do pedido não é assunto e não pode ser procurada dentro dos livros
@@ -328,6 +380,9 @@ class Buscador:
         tokens_cobertura, colados = tokenizar_adjacentes(assunto)
         # o professor raramente nomeia o componente; quando não nomeia, o acervo
         # diz de qual disciplina o assunto é
+        # o componente escolhido no seletor vale mais que qualquer dedução
+        if componente:
+            filtros = dict(filtros, disciplina=componente, disciplina_inferida=False)
         if not filtros.get("disciplina"):
             inferida = mod_disciplinas.inferir(tokens, self.tabela_disciplinas)
             if inferida:
@@ -362,7 +417,7 @@ class Buscador:
             reverse=True)
 
         selecionados = self._diversificar(classificados, similaridades, pergunta,
-                                          principais, extras)
+                                          principais, extras, componente)
 
         # Ancoragem lexical: só respondemos com trechos que realmente contêm os
         # termos que carregam o assunto da pergunta. Ver api/confianca.py.
@@ -403,7 +458,8 @@ class Buscador:
         intersecao = len(a & b)
         return intersecao / float(len(a) + len(b) - intersecao) >= limiar
 
-    def _diversificar(self, classificados, similaridades, pergunta, principais, extras):
+    def _diversificar(self, classificados, similaridades, pergunta, principais,
+                      extras, componente=""):
         """Seleciona os resultados privilegiando variedade de obras.
 
         Os cartões principais trazem no máximo um trecho por obra: o acervo tem
@@ -417,6 +473,10 @@ class Buscador:
 
         for pontuacao, idx in classificados:
             chunk = self.chunks[idx]
+            # Escolher o componente no seletor é restrição, não preferência: o
+            # professor pediu isso para parar de receber obra de outra matéria.
+            if componente and self.disciplina_chunk[idx] != componente:
+                continue
             if self.eh_listagem[idx]:
                 continue          # sumário não responde nada; ver _parece_listagem
             chave = (chunk["obra_id"], chunk["pagina_fisica"])
@@ -439,7 +499,22 @@ class Buscador:
                 # parar, senão as obras mais longas ocupam a resposta inteira
                 restantes.append((pontuacao, idx))
 
-        escolhidos = melhores_por_obra[:principais]
+        # Antes os cartões principais traziam no máximo UM trecho por obra. Fazia
+        # sentido com 5 obras e um manual que casava com tudo; com 13 virou o
+        # defeito mais reclamado no teste — "a habilidade aparece em 24 páginas e
+        # ele mostra 2" —, além de enfiar obra sem relação para preencher vaga.
+        # Agora a obra certa pode ocupar mais de um lugar, e a variedade fica
+        # garantida pelo teto por obra logo abaixo.
+        escolhidos = []
+        contagem_inicial = {}
+        for pontuacao, idx in sorted(melhores_por_obra + restantes, reverse=True):
+            oid = self.chunks[idx]["obra_id"]
+            if contagem_inicial.get(oid, 0) >= TETO_POR_OBRA_PRINCIPAIS:
+                continue
+            contagem_inicial[oid] = contagem_inicial.get(oid, 0) + 1
+            escolhidos.append((pontuacao, idx))
+            if len(escolhidos) >= principais:
+                break
         # O teto por obra acompanha o tamanho do acervo: com poucas obras
         # indexadas um limite fixo de 2 devolveria menos resultados do que o
         # pedido (com uma obra só, apenas 2 cartões para um limite de 8).
@@ -449,7 +524,10 @@ class Buscador:
         for p, i in escolhidos:
             oid = self.chunks[i]["obra_id"]
             contagem[oid] = contagem.get(oid, 0) + 1
-        for p, i in sorted(melhores_por_obra[principais:] + restantes, reverse=True):
+        ja_escolhidos = {i for _, i in escolhidos}
+        for p, i in sorted(melhores_por_obra + restantes, reverse=True):
+            if i in ja_escolhidos:
+                continue
             if len(escolhidos) >= vagas:
                 break
             oid = self.chunks[i]["obra_id"]
@@ -495,6 +573,12 @@ class Buscador:
 
 
 _FRASES = re.compile(r"(?<=[.!?])\s+")
+
+
+def _contem_sequencia(tokens, alvo):
+    """A sequência exata de tokens aparece no trecho?"""
+    n = len(alvo)
+    return any(tokens[i:i + n] == alvo for i in range(len(tokens) - n + 1))
 
 
 def recortar(texto: str, pergunta: str, limite: int = 165) -> str:

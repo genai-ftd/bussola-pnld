@@ -71,6 +71,16 @@ ACERVO_VAZIO = (
 
 ROTULO_VIZINHOS = "O que existe de mais próximo — assunto vizinho, não resposta:"
 
+# Consulta de referência (código da BNCC, trecho entre aspas) quer índice
+# remissivo, não amostra: a frase diz o total encontrado e quanto está à vista.
+REFERENCIA = "{alvo} aparece em {paginas} {p_palavra}, {obras}."
+REFERENCIA_PARCIAL = (" Estas são as {mostradas} primeiras, em ordem de obra e "
+                      "página:")
+REFERENCIA_TODAS = " Estas são todas:"
+SEM_REFERENCIA = ("{nome}, não encontrei {alvo} em nenhuma página das obras "
+                  "indexadas. Confira o código — ou pode ser que a obra que o "
+                  "traz ainda não esteja no índice.")
+
 # ------------------------------------------------------------------ auxiliares
 
 
@@ -188,10 +198,24 @@ def _escolher(variantes, semente):
 # -------------------------------------------------------------------- montagem
 
 
+def _tratar_vocativo(texto, nome):
+    """Sem nome, tira o vocativo em vez de chamar todo mundo de "Professor(a)".
+
+    A pergunta do nome saiu do chat: os testadores digitavam a busca primeiro e
+    a ferramenta passava a chamá-los de "instrumentos musicais". Melhor não ter
+    nome nenhum do que ter um errado — e as frases funcionam sem ele.
+    """
+    if nome:
+        return texto.replace("{nome}", nome)
+    texto = re.sub(r"\{nome\}, *", "", texto)
+    texto = re.sub(r",? *\{nome\}", "", texto)
+    return texto[:1].upper() + texto[1:] if texto else texto
+
+
 def montar_resposta(resultado, nome=None, acervo_vazio=False, guiada=None):
-    nome = (nome or "").strip() or "Professor(a)"
+    nome = (nome or "").strip()
     if acervo_vazio:
-        return {"texto": ACERVO_VAZIO.format(nome=nome), "resultados": [],
+        return {"texto": _tratar_vocativo(ACERVO_VAZIO, nome), "resultados": [],
                 "tambem_encontrei": [], "rotulo": None, "confianca": "nenhuma"}
 
     pergunta = resultado.get("pergunta", "")
@@ -217,6 +241,31 @@ def montar_resposta(resultado, nome=None, acervo_vazio=False, guiada=None):
             "confianca": "guiada",
         }
 
+    # 2. consulta de referência: quantas páginas, em quantas obras, e a lista
+    if resultado.get("modo") == "referencia":
+        alvo = resultado.get("alvo", "")
+        total = resultado.get("total_paginas", 0)
+        if not total:
+            return {"texto": _tratar_vocativo(SEM_REFERENCIA.format(alvo=alvo), nome),
+                    "resultados": [], "tambem_encontrei": [], "rotulo": None,
+                    "confianca": "nenhuma", "termos": resultado.get("termos", [])}
+        obras = resultado.get("total_obras", 1)
+        mostradas = len(principais)
+        texto = REFERENCIA.format(
+            alvo=alvo, paginas=total,
+            p_palavra="página" if total == 1 else "páginas",
+            obras="numa obra" if obras == 1 else "em {} obras".format(obras))
+        texto += (REFERENCIA_TODAS if mostradas >= total
+                  else REFERENCIA_PARCIAL.format(mostradas=mostradas))
+        return {
+            "texto": texto,
+            "termos": resultado.get("termos", []),
+            "resultados": [_cartao(r) for r in principais],
+            "tambem_encontrei": [],
+            "rotulo": None,
+            "confianca": "referencia",
+        }
+
     confianca = resultado.get("confianca", "nenhuma")
 
     # 2. nada ancorado no acervo: dizer que não sabe, e dizer o que faltou
@@ -224,10 +273,11 @@ def montar_resposta(resultado, nome=None, acervo_vazio=False, guiada=None):
         ausentes = resultado.get("termos_ausentes") or []
         if ausentes:
             token = max(ausentes, key=len)
-            texto = _escolher(SEM_RESULTADO_COM_TERMO, pergunta).format(
-                nome=nome, termo=termo_original(pergunta, token))
+            texto = _tratar_vocativo(
+                _escolher(SEM_RESULTADO_COM_TERMO, pergunta).replace(
+                    "{termo}", termo_original(pergunta, token)), nome)
         else:
-            texto = _escolher(SEM_RESULTADO_GENERICO, pergunta).format(nome=nome)
+            texto = _tratar_vocativo(_escolher(SEM_RESULTADO_GENERICO, pergunta), nome)
         return {
             "texto": texto,
             "resultados": [],
@@ -239,13 +289,14 @@ def montar_resposta(resultado, nome=None, acervo_vazio=False, guiada=None):
     # 3. resposta, com ou sem ressalva
     n = len(principais)
     if confianca == "parcial":
-        texto = _escolher(ABERTURAS_PARCIAIS, pergunta).format(nome=nome)
+        texto = _tratar_vocativo(_escolher(ABERTURAS_PARCIAIS, pergunta), nome)
     else:
-        texto = _escolher(ABERTURAS, pergunta).format(
-            nome=nome, n=n,
-            palavra="trecho" if n == 1 else "trechos",
-            verbo="conversa" if n == 1 else "conversam",
-        ) + _descrever_filtros(resultado.get("filtros", {}))
+        texto = _tratar_vocativo(
+            _escolher(ABERTURAS, pergunta)
+            .replace("{n}", str(n))
+            .replace("{palavra}", "trecho" if n == 1 else "trechos")
+            .replace("{verbo}", "conversa" if n == 1 else "conversam"),
+            nome) + _descrever_filtros(resultado.get("filtros", {}))
 
     return {
         "texto": texto,
