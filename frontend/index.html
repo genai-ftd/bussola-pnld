@@ -516,8 +516,6 @@
       });
     }).catch(function(){});
   }
-  popularComponentes();
-
   el.fab.onclick = abrir;
   el.fechar.onclick = fechar;
   document.getElementById("baixarRegistro").onclick = function(){ registro.baixar(); };
@@ -556,5 +554,8 @@
           });
         }
       };
+
+  // depois de MOTOR existir: a lista de componentes sai do acervo
+  popularComponentes();
 })();
 </script>
