@@ -35,9 +35,22 @@ CASOS = [
 
 DOM_FALSO = """
 var criados = [];
-function elem(){ return { style:{}, classList:{add(){},remove(){},toggle(){},contains(){return false}},
-  appendChild(c){criados.push(c);}, addEventListener(){}, focus(){}, remove(){},
-  options:{length:1}, value:"", textContent:"", hidden:true, dataset:{} }; }
+// DOM de mentira com a superfície que a interface realmente usa. Cada método que
+// faltou aqui já deixou passar um TypeError para a página no ar — quando
+// adicionar API nova ao front, adicione aqui também.
+function elem(){
+  return {
+    style:{}, dataset:{}, options:{length:1}, value:"", textContent:"",
+    title:"", hidden:false, scrollHeight:20, scrollTop:0,
+    classList:{ add(){}, remove(){}, toggle(){}, contains(){ return false; } },
+    appendChild(c){ criados.push(c); }, removeChild(){}, remove(){},
+    addEventListener(){}, removeEventListener(){},
+    setAttribute(){}, getAttribute(){ return null; }, removeAttribute(){},
+    focus(){}, blur(){}, select(){}, click(){}, closest(){ return null; },
+    querySelector(){ return null; }, querySelectorAll(){ return []; },
+    insertBefore(){}, contains(){ return false; }
+  };
+}
 globalThis.window = globalThis;
 globalThis.document = { getElementById: elem, querySelectorAll: () => [], createElement: elem,
   addEventListener(){}, body:{classList:{add(){},remove(){},contains(){return false}}} };

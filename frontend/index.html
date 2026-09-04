@@ -123,24 +123,66 @@
     30%{opacity:1;transform:translateY(-3px)}}
 
   /* ---------- caixa de escrita ---------- */
-  .escrita{display:flex;flex-wrap:wrap;gap:8px;padding:12px;background:var(--papel);
+  /* Um contêiner só, como uma folha de papel: o texto em cima e os controles
+     embaixo. Os dois controles são opcionais — vazios, a busca ignora. */
+  .escrita{display:block;padding:12px;background:var(--papel);
     border-top:1px solid var(--borda);flex:none}
-  .controles{flex:1 0 100%;display:flex;gap:8px}
-  .controles input,.controles select{border:1px solid var(--borda);border-radius:10px;
-    padding:9px 11px;font-size:.78rem;color:var(--tinta-suave);background:var(--painel);
-    font-family:var(--ui);min-width:0}
-  .controles input{flex:2}
-  .controles select{flex:3;cursor:pointer}
-  .controles input:focus,.controles select:focus{outline:none;border-color:var(--azul);
-    background:var(--papel);color:var(--tinta)}
-  .escrita input{flex:1;min-width:0;border:1px solid var(--borda);border-radius:11px;
-    padding:12px 14px;font-size:.86rem;color:var(--tinta);background:var(--painel)}
-  .escrita input::placeholder{color:var(--tinta-fraca)}
-  .escrita input:focus{outline:none;border-color:var(--azul);background:var(--papel)}
-  .escrita button{background:var(--azul);color:#fff;border:0;border-radius:11px;
-    padding:0 18px;font-weight:600;font-size:.82rem;cursor:pointer}
-  .escrita button:hover:not(:disabled){background:#2547be}
-  .escrita button:disabled{opacity:.45;cursor:not-allowed}
+  .campo{border:1px solid var(--borda);border-radius:16px;background:var(--painel);
+    padding:10px 10px 8px;transition:border-color .15s,background .15s}
+  .campo:focus-within{border-color:var(--azul);background:var(--papel)}
+  .campo textarea{width:100%;border:0;background:transparent;resize:none;
+    font-family:var(--ui);font-size:.88rem;line-height:1.5;color:var(--tinta);
+    padding:4px 4px 8px;max-height:120px;overflow-y:auto}
+  .campo textarea:focus{outline:none}
+  .campo textarea::placeholder{color:var(--tinta-fraca)}
+
+  .barra{display:flex;align-items:center;gap:4px}
+  /* Rótulo compacto não quebra linha: encolhe com reticências e o valor inteiro
+     continua alcançável por teclado, ponteiro e toque — clicar reabre a edição. */
+  /* Sem contorno, como o "+ Add files" da referência: em repouso os controles
+     são texto discreto e só ganham peso quando têm valor ou recebem o ponteiro.
+     A tag preenchida é a exceção — ali o contraste é informação. */
+  .marca-nome{display:inline-flex;align-items:center;gap:5px;min-width:0;flex:none;
+    max-width:40%;background:transparent;border:0;border-radius:999px;
+    padding:6px 9px;min-height:32px;font-family:var(--ui);font-size:.73rem;
+    font-weight:500;color:var(--tinta-suave);cursor:pointer;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;transition:background .15s,color .15s}
+  .marca-nome:hover{background:var(--borda-suave);color:var(--tinta)}
+  .marca-nome .mais{font-size:.9rem;line-height:1;color:var(--tinta-fraca)}
+  .marca-nome:hover .mais{color:var(--tinta-suave)}
+  .marca-nome[data-preenchido="sim"]{background:var(--azul-tint);
+    color:var(--azul-fundo);font-weight:600;padding:6px 11px}
+  .marca-nome[data-preenchido="sim"]:hover{background:#dbe4ff}
+  .marca-nome[data-preenchido="sim"] .mais{display:none}
+  .marca-nome span:last-child{overflow:hidden;text-overflow:ellipsis}
+
+  .edita-nome{flex:none;max-width:40%;min-width:0;border:1px solid var(--azul);
+    border-radius:999px;padding:6px 10px;min-height:32px;font-family:var(--ui);
+    font-size:.73rem;color:var(--tinta);background:var(--papel)}
+  .edita-nome:focus{outline:none}
+
+  /* Empurrado para a direita, colado no enviar, como o seletor de modelo do
+     exemplo. Seta própria: a nativa não acompanha o peso do texto. */
+  .barra select{margin-left:auto;flex:0 1 auto;min-width:0;max-width:58%;
+    border:0;border-radius:999px;padding:6px 24px 6px 9px;min-height:32px;
+    font-family:var(--ui);font-size:.73rem;color:var(--tinta-suave);
+    background:transparent no-repeat right 7px center/11px 11px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%238b93b8' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5'/%3E%3C/svg%3E");
+    cursor:pointer;appearance:none;-webkit-appearance:none;
+    text-overflow:ellipsis;transition:background-color .15s,color .15s}
+  .barra select:hover{background-color:var(--borda-suave);color:var(--tinta)}
+  .barra select:focus{outline:none;background-color:var(--borda-suave);color:var(--tinta)}
+  .barra select:not([data-vazio="sim"]){color:var(--azul-fundo);font-weight:600}
+
+  .barra button[type="submit"]{flex:none;width:32px;height:32px;border:0;margin-left:8px;
+    border-radius:50%;background:var(--azul);color:#fff;font-size:1rem;
+    cursor:pointer;display:flex;align-items:center;justify-content:center;
+    transition:background .15s,opacity .15s}
+  .barra button[type="submit"]:hover:not(:disabled){background:#2547be}
+  .barra button[type="submit"]:disabled{opacity:.4;cursor:not-allowed}
+
+  .so-leitor{position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+    overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
 
   @media (max-width:560px){
@@ -180,15 +222,27 @@
   </div>
   <div class="conversa" id="conversa" aria-live="polite"></div>
   <form class="escrita" id="formulario">
-    <div class="controles">
-      <input id="nomeProfessor" class="nome" autocomplete="given-name" maxlength="40"
-             placeholder="Seu nome (opcional)" aria-label="Seu nome, opcional">
-      <select id="componente" aria-label="Componente curricular">
-        <option value="">Todos os componentes</option>
-      </select>
+    <div class="campo" id="campo">
+      <textarea id="entrada" rows="1" autocomplete="off" enterkeyhint="send"
+                placeholder="O que você procura nas obras?"
+                aria-label="Sua pergunta"></textarea>
+      <div class="barra">
+        <button type="button" class="marca-nome" id="botaoNome" aria-expanded="false"
+                aria-label="Adicionar seu nome, opcional">
+          <span class="mais" aria-hidden="true">+</span><span id="rotuloNome">Seu nome</span>
+        </button>
+        <input type="text" id="nomeProfessor" class="edita-nome" hidden maxlength="40"
+               autocomplete="given-name" placeholder="Como te chamar?"
+               aria-label="Seu nome, opcional. Deixe vazio para remover.">
+          <select id="componente" data-vazio="sim" aria-label="Componente curricular, opcional">
+          <option value="">Todos os componentes</option>
+        </select>
+        <button type="submit" id="enviar" aria-label="Enviar pergunta">
+          <span aria-hidden="true">↑</span>
+        </button>
+      </div>
     </div>
-    <input id="entrada" autocomplete="off" placeholder="O que você procura nas obras?" aria-label="Sua mensagem">
-    <button type="submit" id="enviar">Enviar</button>
+    <p id="avisoNome" role="status" aria-atomic="true" class="so-leitor"></p>
   </form>
 </div>
 
@@ -205,7 +259,11 @@
     entrada: document.getElementById("entrada"),
     enviar: document.getElementById("enviar"),
     componente: document.getElementById("componente"),
-    nomeProfessor: document.getElementById("nomeProfessor")
+    nomeProfessor: document.getElementById("nomeProfessor"),
+    botaoNome: document.getElementById("botaoNome"),
+    rotuloNome: document.getElementById("rotuloNome"),
+    avisoNome: document.getElementById("avisoNome"),
+    campo: document.getElementById("campo")
   };
 
   // A pergunta do nome saiu: os testadores digitavam a busca primeiro e a
@@ -475,6 +533,7 @@
     if(!texto || estado.ocupado) return;
     balao("eu", texto);
     el.entrada.value = "";
+    if(el.entrada.style) el.entrada.style.height = "auto";
 
     perguntar(texto);
   }
@@ -530,6 +589,21 @@
   el.fechar.onclick = fechar;
   document.getElementById("baixarRegistro").onclick = function(){ registro.baixar(); };
   el.form.onsubmit = function(ev){ ev.preventDefault(); enviarTexto(el.entrada.value); };
+
+  /* Textarea no lugar do input de uma linha: os testadores escrevem perguntas
+     compridas e não davam para ler enquanto digitavam. Enter envia,
+     Shift+Enter quebra linha, e a caixa cresce até o teto do CSS. */
+  function ajustarAltura(){
+    el.entrada.style.height = "auto";
+    el.entrada.style.height = Math.min(el.entrada.scrollHeight, 120) + "px";
+  }
+  el.entrada.addEventListener("input", ajustarAltura);
+  el.entrada.addEventListener("keydown", function(ev){
+    if(ev.key === "Enter" && !ev.shiftKey){
+      ev.preventDefault();
+      enviarTexto(el.entrada.value);
+    }
+  });
   document.addEventListener("keydown", function(ev){ if(ev.key === "Escape") fechar(); });
 
   /* =============================== motores ==============================
@@ -568,15 +642,58 @@
   /* O nome volta como campo opcional em vez de pergunta no chat: preenchido,
      personaliza; vazio, as frases saem sem vocativo. O que não pode é a busca
      virar nome, que foi o que acontecia. */
+  /* Nome e componente são os dois opcionais: vazios, a busca simplesmente não
+     os considera. O nome vira uma tag pequena em vez de um campo sempre aberto,
+     e clicar nela reabre a edição — apagar tudo remove a tag. */
+  function pintarNome(){
+    var nome = (el.nomeProfessor.value || "").trim();
+    el.rotuloNome.textContent = nome || "Seu nome";
+    el.botaoNome.dataset.preenchido = nome ? "sim" : "nao";
+    el.botaoNome.title = nome ? "Você está como " + nome + ". Clique para alterar." : "";
+    el.botaoNome.setAttribute("aria-label", nome
+      ? "Seu nome: " + nome + ". Clique para alterar ou remover."
+      : "Adicionar seu nome, opcional");
+    try { localStorage.setItem("bussola_nome", nome); } catch(e) {}
+  }
+
+  function abrirNome(){
+    el.botaoNome.hidden = true;
+    el.nomeProfessor.hidden = false;
+    el.botaoNome.setAttribute("aria-expanded", "true");
+    el.nomeProfessor.focus();
+    el.nomeProfessor.select();
+  }
+
+  function fecharNome(){
+    var nome = (el.nomeProfessor.value || "").trim();
+    el.nomeProfessor.value = nome;
+    el.nomeProfessor.hidden = true;
+    el.botaoNome.hidden = false;
+    el.botaoNome.setAttribute("aria-expanded", "false");
+    pintarNome();
+    // status com significado, não um valor solto
+    el.avisoNome.textContent = nome
+      ? "Nome definido como " + nome
+      : "Nenhum nome definido";
+  }
+
   try {
     var salvo = localStorage.getItem("bussola_nome");
-    if(salvo && el.nomeProfessor) el.nomeProfessor.value = salvo;
+    if(salvo) el.nomeProfessor.value = salvo;
   } catch(e) {}
-  if(el.nomeProfessor){
-    el.nomeProfessor.addEventListener("change", function(){
-      try { localStorage.setItem("bussola_nome", el.nomeProfessor.value.trim()); } catch(e) {}
-    });
+  pintarNome();
+
+  function pintarComponente(){
+    el.componente.dataset.vazio = el.componente.value ? "nao" : "sim";
   }
+  pintarComponente();
+  el.componente.addEventListener("change", pintarComponente);
+
+  el.botaoNome.addEventListener("click", abrirNome);
+  el.nomeProfessor.addEventListener("blur", fecharNome);
+  el.nomeProfessor.addEventListener("keydown", function(ev){
+    if(ev.key === "Enter" || ev.key === "Escape"){ ev.preventDefault(); fecharNome(); }
+  });
 
   // depois de MOTOR existir: a lista de componentes sai do acervo
   popularComponentes();
