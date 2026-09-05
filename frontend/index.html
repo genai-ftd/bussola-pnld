@@ -585,14 +585,54 @@
 
   /* ================================ fluxo =============================== */
 
+  /* A saudação é a única copy que nasce no cliente: o servidor nunca a envia,
+     porque ela depende da hora e de quem está do outro lado.
+
+     Cumprimento + convite. O cumprimento vem do relógio, e do nome quando o
+     professor já preencheu o campo — na segunda visita ele existe. Quem já
+     esteve aqui não precisa da aula de como perguntar de novo, então o convite
+     de retorno é mais curto. */
+  var CONVITES = [
+    "Pergunte pelo tema da aula ou por um código da BNCC, como EF03LP06.",
+    "Me diz o tema da aula — ou o código da BNCC, como EF03LP06 — que eu acho a página.",
+    "Diga o assunto que você quer preparar, ou o código da BNCC. Eu levo você à página.",
+    "Procuro dentro das obras do PNLD 2027: diga o tema da aula ou o código da BNCC.",
+    "Comece pelo tema da aula. Se preferir, o código da BNCC também funciona.",
+    "O que você quer preparar? Pode ser o tema, o gênero textual ou o código da BNCC."
+  ];
+
+  var CONVITES_RETORNO = [
+    "O que você quer procurar hoje?",
+    "Sobre o que vamos procurar?",
+    "Me diz o tema e eu acho a página.",
+    "O que você está preparando?",
+    "Pode mandar o tema ou o código da BNCC."
+  ];
+
+  function periodo(){
+    var h = new Date().getHours();
+    // madrugada ainda é "boa noite" em português: quem prepara aula à 1h da
+    // manhã não quer ouvir "bom dia"
+    if(h < 5) return "Boa noite";
+    if(h < 12) return "Bom dia";
+    if(h < 18) return "Boa tarde";
+    return "Boa noite";
+  }
+
+  function saudacao(){
+    var nome = el.nomeProfessor ? (el.nomeProfessor.value || "").trim() : "";
+    var lista = nome ? CONVITES_RETORNO : CONVITES;
+    // Semeada pelo dia, como o resto da copy é semeado pela pergunta: a frase
+    // muda de um dia para o outro, mas duas capturas da mesma tela no mesmo dia
+    // são iguais — dá para reproduzir o que o testador viu.
+    var semente = Math.floor(Date.now() / 86400000) + nome.length;
+    return periodo() + (nome ? ", " + nome : "") + "! " + lista[semente % lista.length];
+  }
+
   function iniciar(){
     if(estado.iniciado) return;
     estado.iniciado = true;
-    /* Curta de propósito: o cabeçalho do painel já diz o nome e o que a Bússola
-       faz, e os dois controles são visíveis e rotulados. Repetir isso aqui
-       enchia meia tela de celular antes da primeira pergunta. Sobra o que só a
-       saudação pode dar — como perguntar. */
-    balao("bot", "Pergunte pelo tema da aula — ou por um código da BNCC, como EF03LP06.");
+    balao("bot", saudacao());
   }
 
   function enviarTexto(texto){
