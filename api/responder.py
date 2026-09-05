@@ -22,11 +22,11 @@ import unicodedata
 ABERTURAS = [
     "{nome}, encontrei {n} {palavra} que {verbo} com a sua busca:",
     "Achei {n} {palavra} sobre isso, {nome}:",
-    "{nome}, isto é o que o acervo do PNLD 2027 traz sobre o tema:",
+    "{nome}, foi isto que eu achei sobre o tema:",
     "Encontrei o seguinte nas obras indexadas, {nome}:",
     "Veja o que encontrei, {nome}:",
     "{nome}, estes {palavra} respondem à sua busca:",
-    "O acervo traz isto sobre o tema, {nome}:",
+    "Encontrei isto sobre o tema, {nome}:",
     "Encontrei {n} {palavra} sobre o assunto, {nome}:",
 ]
 
@@ -36,9 +36,9 @@ ABERTURAS_PARCIAIS = [
     "Achei algo relacionado, mas pode não ser exatamente o que você pediu, {nome}:",
     "{nome}, isto tangencia a sua pergunta. Se não for o que você queria, tenta "
     "reformular pelo tema da aula:",
-    "Encontrei correspondência fraca para essa pergunta, {nome}. Vale conferir "
-    "antes de usar:",
-    "{nome}, a correspondência aqui é fraca. Confira antes de levar para a aula:",
+    "Achei pouca coisa que bata com essa pergunta, {nome}. Vale conferir antes "
+    "de usar:",
+    "{nome}, casei pouco com o que você pediu. Confira antes de levar para a aula:",
     "Isto pode não ser o que você procura, {nome}, mas foi o mais perto que cheguei:",
     "Não tenho certeza desta, {nome}. Se eu errei o alvo, nomear o componente ajuda:",
     "Achei só algo aproximado, {nome}. Vale conferir na página antes de usar:",
@@ -57,15 +57,15 @@ SEM_RESULTADO_COM_TERMO = [
     # acervo tinha 5 obras e continuou dizendo "Língua Portuguesa, Espanhola e
     # Arte" depois que virou 13, com nove componentes. Copy não afirma fato que
     # muda sem ela saber.
-    "Procurei {termo} e não encontrei. O acervo indexado ainda é uma amostra "
-    "do PNLD 2027, então pode ser que o tema esteja numa obra que ainda não "
-    "entrou.",
+    "Procurei {termo} e não encontrei. O que eu tenho indexado ainda é uma "
+    "amostra do PNLD 2027, então o tema pode estar numa obra que ainda não "
+    "recebi.",
     "{termo} não está nas obras que eu tenho aqui, {nome}. Pode ser que esteja "
     "num volume que ainda não entrou no índice.",
     "{termo} não aparece nas obras indexadas. Se o assunto tiver outro nome no "
     "material, me diz qual e eu procuro de novo.",
-    "Nada sobre {termo} por aqui, {nome}. O tema da aula ou o código da BNCC "
-    "costumam encontrar melhor do que o termo isolado.",
+    "Nada sobre {termo} por aqui, {nome}. Eu encontro melhor pelo tema da aula "
+    "ou pelo código da BNCC do que pelo termo isolado.",
     "Não localizei {termo}, {nome}. Pode ser que a obra que trata disso ainda "
     "não esteja no índice.",
     "{nome}, {termo} não está no que eu indexei. Prefiro te dizer isso a te "
@@ -77,17 +77,17 @@ SEM_RESULTADO_GENERICO = [
     "pelo conteúdo da aula — por exemplo, \"atividades de leitura para o 3º ano\".",
     "Essa eu não sei responder com o que está indexado, {nome}. Dizer o ano e o "
     "componente curricular costuma ajudar.",
-    "Não achei correspondência boa o bastante para te mostrar. Prefiro dizer isso "
+    "Não achei nada que batesse o bastante para te mostrar. Prefiro dizer isso "
     "a te mandar para uma página errada.",
     "{nome}, essa passou longe do que eu tenho indexado. Quer tentar com outras "
     "palavras?",
     "Não consegui casar sua pergunta com nenhuma página, {nome}. Uma palavra mais "
     "específica costuma resolver.",
-    "{nome}, não encontrei. Se você souber o código da BNCC, ele acha na hora.",
+    "{nome}, não encontrei. Se você souber o código da BNCC, eu acho na hora.",
     "Nada suficientemente próximo por aqui. Tenta nomear o assunto da aula em vez "
     "da pergunta inteira.",
-    "Não achei nada que responda isso, {nome}. Escolher o componente aqui embaixo "
-    "costuma estreitar bem a busca.",
+    "Não achei nada que responda isso, {nome}. Escolher o componente aqui "
+    "embaixo costuma me ajudar a estreitar.",
 ]
 
 ACERVO_VAZIO = (
@@ -95,7 +95,7 @@ ACERVO_VAZIO = (
     "Rode a ingestão (`python ingest/build_index.py`) para começar."
 )
 
-ROTULO_VIZINHOS = "O que existe de mais próximo — assunto vizinho, não resposta:"
+ROTULO_VIZINHOS = "O mais próximo que achei"
 
 # Consulta de referência (código da BNCC, trecho entre aspas) quer índice
 # remissivo, não amostra: a frase diz o total encontrado e quanto está à vista.
@@ -112,7 +112,7 @@ SEM_REFERENCIA = ("{nome}, não encontrei {alvo} em nenhuma página das obras "
 SEM_REFERENCIA_VARIANTES = [
     SEM_REFERENCIA,
     "{alvo} não aparece nas obras indexadas, {nome}. Vale conferir o código; se "
-    "estiver certo, é a obra que ainda não entrou no índice.",
+    "estiver certo, é a obra que eu ainda não indexei.",
     "Não localizei {alvo} em nenhuma página, {nome}. Confira se o código está "
     "completo — eu procuro com ou sem o \"EF\" na frente.",
 ]

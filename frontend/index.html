@@ -115,19 +115,35 @@
   .ocorrencias .paginas span{background:var(--painel);color:var(--tinta-fraca)}
 
   /* ---------- também encontrei ---------- */
+  /* A linha inteira é o alvo, não a palavra "abrir" no canto: era um alvo de
+     ~40px de largura num painel de celular. Agora o item é um link de ponta a
+     ponta, no padrão de lista que todo mundo já conhece de app. */
   .tambem{align-self:stretch;background:var(--papel);border:1px solid var(--borda);
-    border-radius:14px;padding:4px 14px}
-  .tambem summary{cursor:pointer;font-size:.78rem;font-weight:600;color:var(--azul);
-    padding:14px 0;list-style:none;min-height:44px;display:flex;align-items:center}
+    border-radius:14px;overflow:hidden}
+  .tambem summary{cursor:pointer;font-size:.78rem;font-weight:600;color:var(--tinta);
+    padding:13px 14px;list-style:none;min-height:44px;display:flex;align-items:center;
+    gap:8px;touch-action:manipulation}
   .tambem summary::-webkit-details-marker{display:none}
-  .tambem summary::before{content:"▸ ";display:inline-block;transition:transform .15s}
-  .tambem[open] summary::before{content:"▾ "}
-  .tambem ul{list-style:none;margin:0;padding:0 0 8px;display:flex;flex-direction:column;gap:9px}
-  .tambem li{font-size:.78rem;line-height:1.45;display:flex;justify-content:space-between;
-    align-items:center;gap:12px;border-top:1px solid var(--borda-suave);padding-top:6px}
-  .tambem a{color:var(--azul);font-weight:600;text-decoration:none;white-space:nowrap;
-    padding:12px 8px;margin:-12px -8px}
-  .tambem a:hover{text-decoration:underline}
+  .tambem summary:hover{background:var(--painel)}
+  .tambem .conta{margin-left:auto;background:var(--painel);color:var(--tinta-suave);
+    font-size:.7rem;font-weight:600;padding:2px 8px;border-radius:999px;
+    font-variant-numeric:tabular-nums}
+  .tambem .seta{width:9px;height:9px;border-right:2px solid var(--tinta-fraca);
+    border-bottom:2px solid var(--tinta-fraca);transform:rotate(-45deg);
+    transition:transform .18s ease;flex:none;margin-right:2px}
+  .tambem[open] .seta{transform:rotate(45deg)}
+  .tambem ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+  .tambem li{border-top:1px solid var(--borda-suave)}
+  .tambem li a{display:flex;align-items:center;gap:10px;padding:11px 14px;
+    min-height:44px;text-decoration:none;color:var(--tinta);touch-action:manipulation}
+  .tambem li a:hover{background:var(--azul-tint)}
+  /* uma linha por item: sem nowrap o título quebrava e a linha ia a 134px,
+     virando um bloco em vez de um item de lista */
+  .tambem .obra-linha{font-size:.76rem;line-height:1.35;min-width:0;flex:1;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tambem .pagina-linha{font-size:.71rem;color:var(--tinta-suave);white-space:nowrap;
+    font-variant-numeric:tabular-nums}
+  .tambem li a[aria-disabled="true"]{color:var(--tinta-fraca);pointer-events:none}
 
 
   /* ---------- digitando ---------- */
@@ -429,28 +445,44 @@
     if(!lista || !lista.length) return;
     var d = document.createElement("details");
     d.className = "tambem";
-    if(rotulo) d.open = true;   // quando é assunto vizinho, mostrar aberto
+
     var s = document.createElement("summary");
-    s.textContent = rotulo || ("Também encontrei (" + lista.length + ")");
+    var seta = document.createElement("span");
+    seta.className = "seta"; seta.setAttribute("aria-hidden", "true");
+    s.appendChild(seta);
+    s.appendChild(document.createTextNode(rotulo || "Também encontrei"));
+    var conta = document.createElement("span");
+    conta.className = "conta";
+    conta.textContent = lista.length;
+    s.appendChild(conta);
     d.appendChild(s);
+
     var ul = document.createElement("ul");
     lista.forEach(function(r){
       var li = document.createElement("li");
-      var t = document.createElement("span");
-      t.textContent = r.titulo + " — " + r.descricao_pagina;
-      li.appendChild(t);
+      // a linha inteira é o link, em vez de um "abrir" de 40px no canto
+      var a = document.createElement("a");
       if(r.link){
-        var a = document.createElement("a");
         a.href = r.link; a.target = "_blank"; a.rel = "noopener noreferrer";
-        a.textContent = "abrir";
-        li.appendChild(a);
+      } else {
+        a.setAttribute("aria-disabled", "true");
       }
+      var obra = document.createElement("span");
+      obra.className = "obra-linha";
+      obra.textContent = r.titulo;
+      var pag = document.createElement("span");
+      pag.className = "pagina-linha";
+      pag.textContent = r.descricao_pagina;
+      a.appendChild(obra);
+      a.appendChild(pag);
+      li.appendChild(a);
       ul.appendChild(li);
     });
     d.appendChild(ul);
     el.conversa.appendChild(d);
     rolar();
   }
+
 
   /* =============================== registro =============================
      A rodada de teste vai acontecer na página publicada, que é estática e não
@@ -648,10 +680,10 @@
   /* Falha de busca: o problema é nosso, não da pergunta. Nenhuma variante
      culpa quem perguntou, e todas terminam com algo que dá para fazer. */
   var ERROS = [
-    "A busca falhou aqui do meu lado. Tenta de novo — se insistir, recarregar a página costuma resolver.",
+    "Falhei aqui do meu lado. Tenta de novo — se insistir, recarregar a página costuma resolver.",
     "Deu problema comigo, não com a sua pergunta. Manda de novo, por favor.",
     "Não consegui buscar agora. Tenta mais uma vez; se continuar, recarregue a página.",
-    "Algo travou do meu lado. Repete a pergunta que eu tento de novo."
+    "Travei aqui. Repete a pergunta que eu tento de novo."
   ];
 
   function escolherErro(){
