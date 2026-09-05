@@ -227,7 +227,7 @@
   <div class="cabecalho">
     <div>
       <h1>Bússola PNLD</h1>
-      <p>Encontre o conteúdo dentro das obras</p>
+      <p>Busque dentro das obras do PNLD 2027</p>
     </div>
     <div class="acoes">
       <button class="registro" id="baixarRegistro" hidden
@@ -241,7 +241,7 @@
   <form class="escrita" id="formulario">
     <div class="campo" id="campo">
       <textarea id="entrada" rows="1" autocomplete="off" enterkeyhint="send"
-                placeholder="O que você procura nas obras?"
+                placeholder="Tema da aula, gênero textual ou código da BNCC"
                 aria-label="Sua pergunta"></textarea>
       <div class="barra">
         <button type="button" class="marca-nome" id="botaoNome" aria-expanded="false"
@@ -367,7 +367,7 @@
     var a = document.createElement("a");
     a.className = "abrir";
     if(r.link){
-      a.textContent = "Abrir no visualizador";
+      a.textContent = "Abrir a página";
       a.href = r.link; a.target = "_blank"; a.rel = "noopener noreferrer";
     } else {
       a.textContent = "Link indisponível";
@@ -645,6 +645,19 @@
     perguntar(texto);
   }
 
+  /* Falha de busca: o problema é nosso, não da pergunta. Nenhuma variante
+     culpa quem perguntou, e todas terminam com algo que dá para fazer. */
+  var ERROS = [
+    "A busca falhou aqui do meu lado. Tenta de novo — se insistir, recarregar a página costuma resolver.",
+    "Deu problema comigo, não com a sua pergunta. Manda de novo, por favor.",
+    "Não consegui buscar agora. Tenta mais uma vez; se continuar, recarregue a página.",
+    "Algo travou do meu lado. Repete a pergunta que eu tento de novo."
+  ];
+
+  function escolherErro(){
+    return ERROS[Math.floor(Date.now() / 1000) % ERROS.length];
+  }
+
   function perguntar(pergunta){
     estado.ocupado = true;
     el.enviar.disabled = true;
@@ -663,7 +676,13 @@
       rolar();
     }).catch(function(e){
       carregando.remove();
-      balao("bot", "Não consegui completar a busca agora (" + e.message + ").");
+      /* O que houve + de quem é + o que fazer. Antes isto concatenava o
+         e.message cru do JavaScript: o professor lia "undefined is not an
+         object", não tinha o que fazer com aquilo e ainda ficava com a
+         impressão de ter feito algo errado. O detalhe técnico continua
+         existindo, no console, que é onde serve para alguma coisa. */
+      if(window.console && console.error) console.error("Bússola:", e);
+      balao("bot", escolherErro());
     }).then(function(){
       estado.ocupado = false;
       el.enviar.disabled = false;

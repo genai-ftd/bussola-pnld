@@ -186,7 +186,7 @@ def _descrever_obra(r):
 def _descrever_pagina(r):
     """O número que o professor procura no livro vem primeiro; o do leitor é
     encanamento e fica como nota."""
-    onde = "visualizador" if r.get("offset_confiavel") else "PDF"
+    onde = "leitor" if r.get("offset_confiavel") else "PDF"
     destino = r["pagina_issuu"] if r.get("offset_confiavel") else r["pagina_fisica"]
     if r.get("pagina_impressa"):
         return "Página {} do livro · {} no {}".format(

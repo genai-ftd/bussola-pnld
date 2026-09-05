@@ -531,7 +531,7 @@ window.BUSSOLA_ESTATICO = (function(){
 
   function descreverPagina(t, obra){
     // o número que o professor procura no livro vem primeiro; o do leitor é nota
-    var onde = obra[4] ? "visualizador" : "PDF";
+    var onde = obra[4] ? "leitor" : "PDF";
     if(t[2]) return "Página " + t[2] + " do livro · " + t[1] + " no " + onde;
     return "Página " + t[1] + " do " + onde;
   }
