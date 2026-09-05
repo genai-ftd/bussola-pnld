@@ -48,7 +48,8 @@ function elem(){
     title:"", hidden:false, scrollHeight:20, scrollTop:0,
     classList:{ add(){}, remove(){}, toggle(){}, contains(){ return false; } },
     appendChild(c){ criados.push(c); }, removeChild(){}, remove(){},
-    addEventListener(){}, removeEventListener(){},
+    addEventListener(t, f){ if(t === "submit") this.__submit = function(){ f({preventDefault(){}}); }; },
+    removeEventListener(){},
     setAttribute(){}, getAttribute(){ return null; }, removeAttribute(){},
     focus(){}, blur(){}, select(){}, click(){}, closest(){ return null; },
     querySelector(){ return null; }, querySelectorAll(){ return []; },
@@ -56,7 +57,12 @@ function elem(){
   };
 }
 globalThis.window = globalThis;
-globalThis.document = { getElementById: elem, querySelectorAll: () => [], createElement: elem,
+// Elementos estáveis por id: a interface guarda referências no carregamento, e
+// um DOM que devolve objeto novo a cada chamada nunca reproduz isso.
+var registro = {};
+function porId(id){ return registro[id] || (registro[id] = elem()); }
+globalThis.document = {
+  getElementById: porId, querySelectorAll: () => [], createElement: elem,
   addEventListener(){}, body:{classList:{add(){},remove(){},contains(){return false}}} };
 globalThis.localStorage = { getItem:()=>null, setItem(){}, removeItem(){}, clear(){} };
 globalThis.location = { search: "" };
@@ -98,18 +104,38 @@ def main():
     node = executor()
     falhas = 0
 
-    print("== interface (ordem de inicialização) ==")
+    print("== interface ==")
     if not interface:
         print("  [FALHA] não achei o script da interface na página")
         falhas += 1
     else:
-        codigo, saida = rodar(DOM_FALSO + interface[0] +
-                              "\nsetTimeout(function(){console.log('ok');},50);", node)
+        gatilho = "\nsetTimeout(function(){console.log('ok');},50);"
+        codigo, saida = rodar(DOM_FALSO + interface[0] + gatilho, node)
         if codigo or "ok" not in saida:
             print("  [FALHA] {}".format(saida[:600]))
             falhas += 1
         else:
             print("  ok — carrega sem erro")
+
+    # Checagem de ligação: três vezes hoje um replace meu não casou e a função
+    # ficou definida sem nunca ser chamada — a página carregava sem erro e o
+    # recurso simplesmente não existia. Teste de inicialização não pega isso.
+    print("\n== ligação (definido, chamado e estilizado) ==")
+    pagina = html
+    for rotulo, definicao, chamada, estilo in [
+        ("índice remissivo", "function ocorrencias(grupos)", "ocorrencias(d.ocorrencias)", ".ocorrencias{"),
+        ("também encontrei", "function tambemEncontrei", "tambemEncontrei(d.tambem_encontrei", ".tambem{"),
+        ("cartão de resultado", "function cartao(", "cartao(r, d.termos)", ".cartao{"),
+        ("tag de nome", "function pintarNome(", "el.botaoNome.addEventListener", ".marca-nome{"),
+    ]:
+        faltando = [nome for nome, trecho in
+                    (("definição", definicao), ("chamada", chamada), ("estilo", estilo))
+                    if trecho not in pagina]
+        if faltando:
+            print("  [FALHA] {}: falta {}".format(rotulo, ", ".join(faltando)))
+            falhas += 1
+        else:
+            print("  ok   {}".format(rotulo))
 
     print("\n== motor de busca ==")
     prova = "\n".join(

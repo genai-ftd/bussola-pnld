@@ -379,6 +379,52 @@
     el.conversa.appendChild(c);
   }
 
+  /* O índice remissivo que os testadores pediram: "a habilidade aparece em 24
+     páginas e ele mostra 2". Os cartões seguem sendo a amostra comentada; aqui
+     estão todas as páginas, agrupadas por obra e clicáveis. */
+  function ocorrencias(grupos){
+    if(!grupos || !grupos.length) return;
+    var total = grupos.reduce(function(n, g){ return n + g.total; }, 0);
+    // índice menor que a amostra não acrescenta nada
+    if(total <= (document.querySelectorAll(".cartao").length || 3)) return;
+
+    var caixa = document.createElement("div");
+    caixa.className = "ocorrencias";
+    var titulo = document.createElement("h3");
+    titulo.textContent = "Onde mais aparece — " + total
+      + (total === 1 ? " página" : " páginas")
+      + (grupos.length > 1 ? " em " + grupos.length + " obras" : "");
+    caixa.appendChild(titulo);
+
+    grupos.forEach(function(g){
+      var bloco = document.createElement("div");
+      bloco.className = "obra";
+      var nome = document.createElement("span");
+      nome.className = "nome-obra";
+      nome.textContent = g.titulo;
+      bloco.appendChild(nome);
+
+      var paginas = document.createElement("div");
+      paginas.className = "paginas";
+      g.paginas.forEach(function(pag){
+        var no;
+        if(pag.link){
+          no = document.createElement("a");
+          no.href = pag.link; no.target = "_blank"; no.rel = "noopener noreferrer";
+          no.setAttribute("aria-label", "Abrir página " + pag.rotulo + " de " + g.titulo);
+        } else {
+          no = document.createElement("span");
+        }
+        no.textContent = pag.rotulo;
+        paginas.appendChild(no);
+      });
+      bloco.appendChild(paginas);
+      caixa.appendChild(bloco);
+    });
+    el.conversa.appendChild(caixa);
+    rolar();
+  }
+
   function tambemEncontrei(lista, rotulo){
     if(!lista || !lista.length) return;
     var d = document.createElement("details");
@@ -572,6 +618,7 @@
       registro.gravar(pergunta, d, Date.now() - inicio);
       balao("bot", d.texto);
       (d.resultados || []).forEach(function(r){ cartao(r, d.termos); });
+      ocorrencias(d.ocorrencias);
       tambemEncontrei(d.tambem_encontrei, d.rotulo);
       rolar();
     }).catch(function(e){
